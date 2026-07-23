@@ -1,0 +1,16 @@
+# Mac OS X Finder and whatnot
+.DS_Store
+
+# XCode
+*xcuserdata*
+*.xcuserdatad
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+Packages/
+.build
+.index-build
+
+# Temp workaround for swift bug which drops generated deps in the source tree
+/Version.generated.*
