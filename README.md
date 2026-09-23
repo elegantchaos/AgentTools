@@ -45,7 +45,7 @@ Initialize or update all public skill submodules to their recorded revisions:
 agt skills sync --all
 ```
 
-Rebuild runtime skill links:
+Rebuild runtime skill links in `~/.codex/skills` and `~/.claude/skills` (or under `CODEX_HOME` and `CLAUDE_CONFIG_DIR` when set). Existing links are replaced; any other file or directory with a skill's name is left in place and reported as an error:
 
 ```shell
 agt skills link

@@ -16,22 +16,28 @@ final class SkillsPublicTool {
   /// Root directory containing skills in the repository.
   private let skillsRoot: URL
 
-  /// Runtime destination where skills are linked for the assistant.
-  private let agentsSkillsDir: URL
+  /// Runtime skill directories that receive links to discovered skills.
+  private let linkDestinations: [SkillLinkDestination]
 
   /// Skill sources that are local to this repository rather than submodules.
   private let repoLocalSkillPaths = ["skills/refresh-skill"]
 
   /// Creates the tool using environment-driven path overrides when provided.
-  init() throws {
-    self.repoRoot = try Self.locateRepoRoot()
-    self.skillsRoot = repoRoot.appendingPathComponent("skills")
-
-    let homeDirectory = fileManager.homeDirectoryForCurrentUser
-    self.agentsSkillsDir = URL(
-      fileURLWithPath: ProcessInfo.processInfo.environment["AGENTS_SKILLS_DIR"]
-        ?? homeDirectory.appendingPathComponent(".agents/skills").path
+  convenience init() throws {
+    try self.init(
+      repoRoot: Self.locateRepoRoot(),
+      linkDestinations: SkillLinkDestination.defaults(
+        environment: ProcessInfo.processInfo.environment,
+        homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+      )
     )
+  }
+
+  /// Creates a tool with explicit paths for testing or embedding.
+  init(repoRoot: URL, linkDestinations: [SkillLinkDestination]) {
+    self.repoRoot = repoRoot
+    self.skillsRoot = repoRoot.appendingPathComponent("skills")
+    self.linkDestinations = linkDestinations
   }
 
   /// Resolves the repository root from explicit environment or marker scanning.
@@ -96,9 +102,14 @@ final class SkillsPublicTool {
     return (info.st_mode & S_IFMT) == S_IFLNK
   }
 
-  /// Replaces an existing path with a symbolic link.
+  /// Replaces an existing symbolic link, refusing to remove any other kind of path.
   private func replaceSymlink(at destination: URL, with target: URL) throws {
     if pathExistsIncludingBrokenSymlink(destination) {
+      guard isSymlink(destination) else {
+        throw ToolError(
+          "Refusing to replace runtime skill path because it is not a symlink: \(destination.path)"
+        )
+      }
       try fileManager.removeItem(at: destination)
     }
     try fileManager.createSymbolicLink(at: destination, withDestinationURL: target)
@@ -453,46 +464,50 @@ final class SkillsPublicTool {
     }
   }
 
-  /// Rebuilds runtime symlinks for all discovered skills.
+  /// Rebuilds runtime symlinks for all discovered skills in every destination.
   func runLink() throws {
-    try makeDirectory(agentsSkillsDir)
-    try removeRetiredRuntimeLink(named: "refresh-public-skills")
-
-    for target in try linkTargets() {
+    let targets = try linkTargets()
+    for target in targets {
       guard fileManager.fileExists(atPath: target.directory.path) else {
         throw ToolError("Missing skill source for \(target.name): \(target.directory.path)")
       }
-      try replaceSymlink(
-        at: agentsSkillsDir.appendingPathComponent(target.name),
-        with: target.directory
-      )
-      print("\(target.name): \(target.directory.path)")
+    }
+
+    for destination in linkDestinations {
+      try makeDirectory(destination.directory)
+      for target in targets {
+        try replaceSymlink(
+          at: destination.directory.appendingPathComponent(target.name),
+          with: target.directory
+        )
+        print("\(destination.label) \(target.name): \(target.directory.path)")
+      }
     }
   }
 
-  /// Removes the retired runtime link if it still exists.
-  private func removeRetiredRuntimeLink(named name: String) throws {
-    let link = agentsSkillsDir.appendingPathComponent(name)
-    guard pathExistsIncludingBrokenSymlink(link) else { return }
-
-    guard isSymlink(link) else {
-      throw ToolError(
-        "Refusing to remove retired runtime skill path because it is a directory: \(link.path)"
-      )
-    }
-
-    try fileManager.removeItem(at: link)
-    print("\(name): retired runtime link removed")
+  /// Returns one link status cell per destination for a skill.
+  private func linkStatusCells(for skill: DiscoveredSkill) -> String {
+    linkDestinations
+      .map { destination in
+        symlinkStatus(
+          link: destination.directory.appendingPathComponent(skill.name),
+          target: skill.skillDirectory
+        )
+      }
+      .joined(separator: " | ")
   }
 
   /// Prints status for all known skill sources and runtime links.
   func runStatus() throws {
     let submodulePaths = try registeredSubmodulePaths()
+    let destinationHeaders = linkDestinations.map(\.label).joined(separator: " | ")
+    let destinationDividers = linkDestinations.map { _ in "---" }.joined(separator: " | ")
+    let destinationPlaceholders = linkDestinations.map { _ in "-" }.joined(separator: " | ")
 
     print("# Skill Repo Status\n")
     print("Skills root: \(skillsRoot.path)\n")
-    print("| Skill | Source | Working Tree | Ahead/Behind | ~/.agents |")
-    print("| --- | --- | --- | --- | --- |")
+    print("| Skill | Source | Working Tree | Ahead/Behind | \(destinationHeaders) |")
+    print("| --- | --- | --- | --- | \(destinationDividers) |")
 
     for submodulePath in submodulePaths {
       let submoduleDir = submoduleDirectory(for: submodulePath)
@@ -503,23 +518,18 @@ final class SkillsPublicTool {
       let source = discovered.map { relativePath(for: $0.skillDirectory) } ?? submodulePath
 
       guard isGitCheckout(submoduleDir) else {
-        print("| \(skillName) | \(source) | uninitialized | - | - |")
+        print("| \(skillName) | \(source) | uninitialized | - | \(destinationPlaceholders) |")
         continue
       }
 
       let dirtyResult = try git(["status", "--short"], in: submoduleDir)
       let workingTree = trimmed(dirtyResult.stdout).isEmpty ? "clean" : "dirty"
       let aheadBehind = try readAheadBehind(in: submoduleDir)
-      let agentsStatus =
-        discovered.map {
-          symlinkStatus(
-            link: agentsSkillsDir.appendingPathComponent($0.name),
-            target: $0.skillDirectory
-          )
-        } ?? "invalid"
+      let linkStatus =
+        discovered.map(linkStatusCells(for:))
+        ?? linkDestinations.map { _ in "invalid" }.joined(separator: " | ")
 
-      print(
-        "| \(skillName) | \(source) | \(workingTree) | \(aheadBehind) | \(agentsStatus) |")
+      print("| \(skillName) | \(source) | \(workingTree) | \(aheadBehind) | \(linkStatus) |")
     }
 
     for sourcePath in repoLocalSkillPaths {
@@ -529,24 +539,10 @@ final class SkillsPublicTool {
       else {
         continue
       }
-      let agentsStatus = symlinkStatus(
-        link: agentsSkillsDir.appendingPathComponent(skill.name),
-        target: skill.skillDirectory
-      )
       print(
-        "| \(skill.name) | \(relativePath(for: skill.skillDirectory)) | repo-local | - | \(agentsStatus) |"
+        "| \(skill.name) | \(relativePath(for: skill.skillDirectory)) | repo-local | - | \(linkStatusCells(for: skill)) |"
       )
     }
-
-    reportRetiredRuntimeLink(named: "refresh-public-skills")
-  }
-
-  /// Reports stale retired links in status output.
-  private func reportRetiredRuntimeLink(named name: String) {
-    let link = agentsSkillsDir.appendingPathComponent(name)
-    guard pathExistsIncludingBrokenSymlink(link) else { return }
-
-    print("| \(name) | retired | remove runtime link | - | stale |")
   }
 
   /// Classifies a skill directory for publication suitability.

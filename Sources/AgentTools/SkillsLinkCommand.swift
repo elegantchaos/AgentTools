@@ -10,7 +10,7 @@ struct SkillsLinkCommand: ParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "link",
-    abstract: "Link discovered skills into ~/.agents/skills."
+    abstract: "Link discovered skills into the Codex and Claude Code skill directories."
   )
 
   /// Executes the link command.

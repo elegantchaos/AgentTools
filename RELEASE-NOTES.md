@@ -1,5 +1,12 @@
 # Release Notes
 
+## 2.0.1
+
+- `agt skills link` links skills into `~/.codex/skills` and `~/.claude/skills`, honouring `CODEX_HOME` and `CLAUDE_CONFIG_DIR`.
+- `agt skills status` reports link status for each runtime directory.
+- Linking refuses to replace any runtime path that is not a symlink.
+- No longer uses `~/.agents/skills` or the `AGENTS_SKILLS_DIR` override.
+
 ## 2.0
 
 - Reads shared rules from `runtimes/codex/rules` in the Agents repository.
