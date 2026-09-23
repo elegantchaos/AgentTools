@@ -39,9 +39,9 @@ struct RepoRootLocator {
   /// Returns true when the directory has the expected root markers.
   private static func isRepositoryRoot(_ directory: URL, fileExistsAtPath: (String) -> Bool) -> Bool {
     let hasSkills = fileExistsAtPath(directory.appendingPathComponent("skills").path)
-    let hasCodex = fileExistsAtPath(directory.appendingPathComponent("codex").path)
+    let hasRuntimes = fileExistsAtPath(directory.appendingPathComponent("runtimes").path)
     let hasSharedGuidance = fileExistsAtPath(directory.appendingPathComponent("COMMON.md").path)
 
-    return hasSkills && hasCodex && hasSharedGuidance
+    return hasSkills && hasRuntimes && hasSharedGuidance
   }
 }

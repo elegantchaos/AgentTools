@@ -13,7 +13,7 @@ struct RulesPublicToolTests {
   /// Replaces a matching runtime symlink with a regular file.
   @Test func replacesMatchingSymlinkWithCopy() throws {
     try withTemporaryRulesDirectories { repoRoot, runtimeRulesDirectory in
-      let sharedRule = repoRoot.appendingPathComponent("codex/rules/git.rules")
+      let sharedRule = repoRoot.appendingPathComponent("runtimes/codex/rules/git.rules")
       let runtimeRule = runtimeRulesDirectory.appendingPathComponent("git.rules")
       try write("shared", to: sharedRule)
       try FileManager.default.createDirectory(
@@ -42,7 +42,7 @@ struct RulesPublicToolTests {
   /// Reports a runtime symlink without changing it during status inspection.
   @Test func statusReportsSymlinkWithoutReplacingIt() throws {
     try withTemporaryRulesDirectories { repoRoot, runtimeRulesDirectory in
-      let sharedRule = repoRoot.appendingPathComponent("codex/rules/git.rules")
+      let sharedRule = repoRoot.appendingPathComponent("runtimes/codex/rules/git.rules")
       let runtimeRule = runtimeRulesDirectory.appendingPathComponent("git.rules")
       try write("shared", to: sharedRule)
       try FileManager.default.createDirectory(
@@ -67,7 +67,7 @@ struct RulesPublicToolTests {
   /// Overwrites a divergent runtime file with the canonical shared content.
   @Test func overwritesRuntimeEdit() throws {
     try withTemporaryRulesDirectories { repoRoot, runtimeRulesDirectory in
-      let sharedRule = repoRoot.appendingPathComponent("codex/rules/git.rules")
+      let sharedRule = repoRoot.appendingPathComponent("runtimes/codex/rules/git.rules")
       let runtimeRule = runtimeRulesDirectory.appendingPathComponent("git.rules")
       try write("shared", to: sharedRule)
       try write("runtime edit", to: runtimeRule)
@@ -88,7 +88,7 @@ struct RulesPublicToolTests {
   /// Copies a missing shared rule into the runtime directory.
   @Test func copiesMissingRuntimeRule() throws {
     try withTemporaryRulesDirectories { repoRoot, runtimeRulesDirectory in
-      let sharedRule = repoRoot.appendingPathComponent("codex/rules/git.rules")
+      let sharedRule = repoRoot.appendingPathComponent("runtimes/codex/rules/git.rules")
       let runtimeRule = runtimeRulesDirectory.appendingPathComponent("git.rules")
       try write("shared", to: sharedRule)
 
@@ -125,7 +125,7 @@ struct RulesPublicToolTests {
   /// Rejects a repository-side default file because it must remain runtime-only.
   @Test func rejectsSharedDefaultRules() throws {
     try withTemporaryRulesDirectories { repoRoot, runtimeRulesDirectory in
-      let sharedDefault = repoRoot.appendingPathComponent("codex/rules/default.rules")
+      let sharedDefault = repoRoot.appendingPathComponent("runtimes/codex/rules/default.rules")
       try write("shared default", to: sharedDefault)
       let tool = RulesPublicTool(
         repoRoot: repoRoot,
@@ -144,7 +144,7 @@ struct RulesPublicToolTests {
   /// Detects drift without changing the runtime file.
   @Test func statusReportsDriftWithoutOverwriting() throws {
     try withTemporaryRulesDirectories { repoRoot, runtimeRulesDirectory in
-      let sharedRule = repoRoot.appendingPathComponent("codex/rules/git.rules")
+      let sharedRule = repoRoot.appendingPathComponent("runtimes/codex/rules/git.rules")
       let runtimeRule = runtimeRulesDirectory.appendingPathComponent("git.rules")
       try write("shared", to: sharedRule)
       try write("runtime edit", to: runtimeRule)
@@ -171,7 +171,7 @@ struct RulesPublicToolTests {
     defer { try? FileManager.default.removeItem(at: root) }
 
     try FileManager.default.createDirectory(
-      at: repoRoot.appendingPathComponent("codex/rules"),
+      at: repoRoot.appendingPathComponent("runtimes/codex/rules"),
       withIntermediateDirectories: true
     )
     try body(repoRoot, runtimeRulesDirectory)

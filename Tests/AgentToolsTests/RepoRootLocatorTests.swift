@@ -26,7 +26,7 @@ struct RepoRootLocatorTests {
     let candidateRoot = "/repo"
     let paths = Set([
       "\(candidateRoot)/skills",
-      "\(candidateRoot)/codex",
+      "\(candidateRoot)/runtimes",
       "\(candidateRoot)/COMMON.md",
     ])
 
