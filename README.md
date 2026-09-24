@@ -65,27 +65,32 @@ agt skills audit --all
 
 ### Validate
 
-Run the standard post-change validation flow for a Swift repository:
+`agt validate` is the standard way to check a Swift repository after a change. It has two goals.
+
+**Consistent process.** Routine housekeeping, such as formatting and linting, happens automatically and the same way every time, so no change skips it and every project follows the same steps.
+
+**Fast, complete verification.** It confirms, as quickly as possible, that a change has broken nothing:
+
+- *Fast feedback first.* Build errors should surface as early as possible, so validation starts at the smallest useful scope: the affected module, built for the host platform.
+- *Complete coverage after.* A change can also break another platform, an integration between modules, or a test. Full validation builds the whole product for every platform it supports and runs all of its tests.
+
+Run full validation from the repository root:
 
 ```shell
 agt validate
 ```
 
-Comprehensive validation:
+Run the fast check for a module you have changed:
 
-- formats and lints changed, staged, and untracked Swift files with `swift format`
-- builds the Xcode workspace when one is usable; otherwise builds and tests every discovered Swift package; otherwise builds the Xcode project
-- builds SwiftPM packages with `--build-system swiftbuild -Xswiftc -DVALIDATING`
-- shapes output with `--output filtered|quiet|raw` (`filtered` is the default; `--quiet` and `--raw` are aliases)
-- writes per-step logs to `.build/validation-logs`
-- writes Xcode products to `.build/agt-validate/DerivedData`
-- finishes with a PASS/FAIL/SKIP summary
+```shell
+agt validate --target <name>
+```
 
-Use `agt validate --target <name>` as a fast preflight after modifying a non-test SwiftPM target. It searches the discovered packages for that target, builds it and its dependencies, then runs a conventionally named `<name>Tests` target when one exists. When no package defines the target, it builds an Xcode scheme of that name instead. The option is not intended for test-target names.
+When the fast check passes, run full validation.
 
-After targeted validation passes, run `agt validate` to verify the complete app or package.
+Each run finishes with a PASS/FAIL/SKIP summary. Per-step logs are written to `.build/validation-logs`, and terminal output is shaped with `--output filtered|quiet|raw` (`filtered` is the default).
 
-Run `agt validate --help` for the options that select workspaces, projects, schemes, destinations, Xcode tests, and package directories.
+Run `agt validate --help` for all options.
 
 ## Development
 
