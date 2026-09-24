@@ -79,7 +79,7 @@ struct ValidationTests {
     ("Tests/FooTests/Support/HelperPackage", false),
   ])
   func ignoredDiscoveryPaths(path: String, expected: Bool) {
-    #expect(ValidationDiscovery.shouldIgnoreDiscoveredPackage(at: path) == expected)
+    #expect(ValidationDiscovery.isInTestResources(path) == expected)
   }
 
   @Test(arguments: [

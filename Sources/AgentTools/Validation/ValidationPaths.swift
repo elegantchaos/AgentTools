@@ -12,10 +12,20 @@ struct ValidationPaths {
   /// Private DerivedData directory for Xcode validation.
   let derivedDataPath: String
 
+  /// Returns the directory that holds step logs for a repository.
+  static func logRoot(repoPath: String) -> String {
+    "\(repoPath)/.build/validation-logs"
+  }
+
+  /// Returns the log file path for a step in `logRoot`, using a filesystem-safe form of its name.
+  static func logPath(_ name: String, logRoot: String) -> String {
+    "\(logRoot)/\(name.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "_", options: .regularExpression)).log"
+  }
+
   /// Resolves the output locations for a repository, optionally clearing previous output, and creates them.
   static func prepare(repoPath: String, clean: Bool) throws -> ValidationPaths {
     let paths = ValidationPaths(
-      logRoot: "\(repoPath)/.build/validation-logs",
+      logRoot: logRoot(repoPath: repoPath),
       derivedDataPath: "\(repoPath)/.build/agt-validate/DerivedData"
     )
 
@@ -31,6 +41,6 @@ struct ValidationPaths {
 
   /// Returns the log file path for a step, using a filesystem-safe form of its name.
   func logPath(_ name: String) -> String {
-    "\(logRoot)/\(name.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "_", options: .regularExpression)).log"
+    Self.logPath(name, logRoot: logRoot)
   }
 }

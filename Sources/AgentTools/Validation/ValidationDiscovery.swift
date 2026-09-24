@@ -31,8 +31,8 @@ enum ValidationDiscovery {
     container(override: override, suffix: ".xcodeproj", marker: "project.pbxproj", repoPath: repoPath)
   }
 
-  /// Returns `true` when a discovered package path lives inside a test resources directory.
-  static func shouldIgnoreDiscoveredPackage(at path: String) -> Bool {
+  /// Returns `true` when a repository-relative path lies inside a `Resources` directory under `Tests`, where fixtures live.
+  static func isInTestResources(_ path: String) -> Bool {
     let parts = path.split(separator: "/").map { $0.lowercased() }
     guard let testsIndex = parts.firstIndex(of: "tests") else { return false }
     return parts[(testsIndex + 1)...].contains("resources")
@@ -74,7 +74,7 @@ enum ValidationDiscovery {
         }
 
         if child.lastPathComponent == "Package.swift" {
-          guard !shouldIgnoreDiscoveredPackage(at: relativeDirectory) else { continue }
+          guard !isInTestResources(relativeDirectory) else { continue }
           addPackageDir(directory.path)
         } else if isDirectory(child.path) {
           discoverPackages(in: child, relativePath: relativePath)

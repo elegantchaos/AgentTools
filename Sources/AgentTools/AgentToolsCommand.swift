@@ -13,6 +13,7 @@ struct AgentTools: ParsableCommand {
     commandName: "agt",
     abstract: "Maintenance and validation tools for agent-driven development.",
     subcommands: [
+      FormatCommand.self,
       Rules.self,
       Skills.self,
       ValidateCommand.self,

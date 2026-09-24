@@ -5,22 +5,20 @@
 
 import Foundation
 
-/// Runs format, lint, build, and test steps for a Swift repository and reports a PASS/FAIL/SKIP summary.
+/// Runs build and test steps for a Swift repository and reports a PASS/FAIL/SKIP summary.
 final class ValidationTool {
   /// Validation settings.
   private let config: ValidationConfig
   /// Repository root that validation runs in.
   private let repoPath: String
-  /// Subprocess runner rooted at the repository.
-  private let process: ValidationProcess
-  /// Steps recorded so far, in order.
-  private var steps: [ValidationStepRecord] = []
+  /// Runs and records validation steps.
+  private let runner: StepRunner
 
   /// Creates a tool that validates the repository at `repoPath`.
   init(config: ValidationConfig, repoPath: String) {
     self.config = config
     self.repoPath = repoPath
-    self.process = ValidationProcess(workingDirectory: repoPath)
+    self.runner = StepRunner(repoPath: repoPath, outputMode: config.outputMode)
   }
 
   /// Adds the build system and compiler flags used for every SwiftPM validation build.
@@ -28,13 +26,16 @@ final class ValidationTool {
     arguments + ["--build-system", "swiftbuild", "-Xswiftc", "-DVALIDATING"]
   }
 
+  /// Subprocess runner rooted at the repository.
+  private var process: ValidationProcess { runner.process }
+
   /// Runs targeted or comprehensive validation, printing the summary whether or not it succeeds.
   func run() throws {
     guard FileManager.default.fileExists(atPath: "\(repoPath)/.git") else {
       throw ToolError("Current working directory is not a git repo root: \(repoPath)")
     }
 
-    defer { printSummary() }
+    defer { runner.printSummary() }
 
     let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: config.clean)
     let packages = ValidationDiscovery.packageDirectories(
@@ -60,8 +61,6 @@ final class ValidationTool {
       return
     }
 
-    try runFormatAndLint(paths: paths)
-
     if let workspace {
       try runXcodeBroad(container: ["-workspace", workspace], kind: "workspace", logPrefix: "comprehensive", paths: paths)
     } else if !packages.isEmpty {
@@ -74,30 +73,6 @@ final class ValidationTool {
     }
   }
 
-  /// Formats and lints the Swift files changed in the working tree, index, or untracked files.
-  private func runFormatAndLint(paths: ValidationPaths) throws {
-    let files = try changedSwiftFiles()
-    guard !files.isEmpty else {
-      recordStep("format changed Swift files", status: .skip)
-      recordStep("lint changed Swift files", status: .skip)
-      return
-    }
-
-    try runStep(
-      title: "Format changed Swift files",
-      summary: "format changed Swift files",
-      arguments: ["swift", "format", "--in-place"] + files,
-      logPath: paths.logPath("format_changed_swift_files")
-    )
-
-    try runStep(
-      title: "Lint changed Swift files",
-      summary: "lint changed Swift files",
-      arguments: ["swift", "format", "lint"] + files,
-      logPath: paths.logPath("lint_changed_swift_files")
-    )
-  }
-
   /// Builds every scheme for its destinations, then optionally tests workspace schemes.
   private func runXcodeBroad(container: [String], kind: String, logPrefix: String, paths: ValidationPaths) throws {
     let isWorkspace = kind == "workspace"
@@ -105,7 +80,7 @@ final class ValidationTool {
 
     for scheme in config.schemes {
       for destination in try buildDestinations(container: container, scheme: scheme, paths: paths) {
-        try runStep(
+        try runner.run(
           title: "Build \(kind) scheme \(scheme) for \(destination)",
           summary: "build \(scheme) (\(destination))",
           arguments: xcodebuildArguments(container: container, scheme: scheme, destination: destination, paths: paths, actions: actions),
@@ -118,7 +93,7 @@ final class ValidationTool {
 
     for scheme in config.schemes {
       for destination in config.testDestinations {
-        try runStep(
+        try runner.run(
           title: "Test workspace scheme \(scheme) for \(destination)",
           summary: "test \(scheme) (\(destination))",
           arguments: xcodebuildArguments(container: container, scheme: scheme, destination: destination, paths: paths, actions: ["test"]),
@@ -138,7 +113,7 @@ final class ValidationTool {
         throw ToolError("Could not inspect Swift package at \(packageDir) before validation.\n\(error)")
       }
 
-      try runStep(
+      try runner.run(
         title: "Build Swift package \(packageDir)",
         summary: "swift build \(packageDir)",
         arguments: swiftPMCommand(["build", "--package-path", packageDir]),
@@ -146,11 +121,11 @@ final class ValidationTool {
       )
 
       guard package.hasTestTargets else {
-        recordStep("swift test \(packageDir) (no test targets)", status: .skip)
+        runner.record("swift test \(packageDir) (no test targets)", status: .skip)
         continue
       }
 
-      try runStep(
+      try runner.run(
         title: "Test Swift package \(packageDir)",
         summary: "swift test \(packageDir)",
         arguments: swiftPMCommand(["test", "--package-path", packageDir]),
@@ -175,7 +150,7 @@ final class ValidationTool {
       }
       guard package.hasTarget(named: target) else { continue }
 
-      try runStep(
+      try runner.run(
         title: "Build Swift target \(target)",
         summary: "swift build \(target)",
         arguments: swiftPMCommand(["build", "--package-path", packageDir, "--target", target]),
@@ -184,14 +159,14 @@ final class ValidationTool {
 
       let candidates = target.hasSuffix("Tests") ? [target] : [target, "\(target)Tests"]
       if let testTarget = candidates.first(where: { package.hasTarget(named: $0, type: "test") }) {
-        try runStep(
+        try runner.run(
           title: "Test Swift target \(testTarget)",
           summary: "swift test \(testTarget)",
           arguments: swiftPMCommand(["test", "--package-path", packageDir, "--filter", testTarget]),
           logPath: paths.logPath("swift_test_target_\(testTarget)_\(packageDir)")
         )
       } else {
-        recordStep("swift test \(target) (no matching test target)", status: .skip)
+        runner.record("swift test \(target) (no matching test target)", status: .skip)
       }
       return
     }
@@ -225,7 +200,7 @@ final class ValidationTool {
     }
 
     let destination = "generic/platform=macOS"
-    try runStep(
+    try runner.run(
       title: "Build \(fallback.kind) scheme \(target) for \(destination)",
       summary: "build \(target) (\(destination))",
       arguments: xcodebuildArguments(container: fallback.container, scheme: target, destination: destination, paths: paths, actions: ["build"]),
@@ -288,85 +263,5 @@ final class ValidationTool {
   /// Returns `true` when `xcodebuild -list` accepts the workspace or project.
   private func isUsable(_ container: [String]) -> Bool {
     (try? process.capture(["xcodebuild", "-list"] + container))?.status == 0
-  }
-
-  /// Returns changed, staged, and untracked Swift files, without duplicates, in git's order.
-  private func changedSwiftFiles() throws -> [String] {
-    let commands = [
-      ["git", "diff", "--name-only", "--", "*.swift"],
-      ["git", "diff", "--cached", "--name-only", "--", "*.swift"],
-      ["git", "ls-files", "--others", "--exclude-standard", "--", "*.swift"],
-    ]
-
-    var seen = Set<String>()
-    var ordered: [String] = []
-    for command in commands {
-      let result = try process.capture(command)
-      guard result.status == 0 else {
-        throw ToolError("Failed to collect changed files: \(command.joined(separator: " "))\n\(result.stderr)")
-      }
-      for line in result.stdout.split(separator: "\n") {
-        let file = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !file.isEmpty, seen.insert(file).inserted {
-          ordered.append(file)
-        }
-      }
-    }
-    return ordered
-  }
-
-  /// Runs one logged step, recording PASS or FAIL and throwing on failure.
-  private func runStep(title: String, summary: String, arguments: [String], logPath: String) throws {
-    print("== \(title)")
-    let command = arguments.joined(separator: " ")
-    print("+ /usr/bin/env \(command)")
-
-    let result = try process.runLogged(arguments, logPath: logPath, outputMode: config.outputMode)
-
-    guard result.status == 0 else {
-      if config.outputMode != .raw {
-        for line in ValidationOutput.failureDiagnostics(result.output) {
-          print(line)
-        }
-      }
-      print("log: \(logPath)")
-      recordStep(summary, status: .fail, warningsPresent: result.warningsPresent, logPath: logPath)
-      throw ToolError("Command failed with exit code \(result.status): /usr/bin/env \(command)")
-    }
-
-    recordStep(summary, status: .pass, warningsPresent: result.warningsPresent, logPath: logPath)
-    if result.warningsPresent || config.outputMode == .quiet {
-      print("log: \(logPath)")
-    }
-  }
-
-  /// Records a step result and prints its status line.
-  private func recordStep(_ summary: String, status: ValidationStepStatus, warningsPresent: Bool = false, logPath: String? = nil) {
-    steps.append(ValidationStepRecord(summary: summary, status: status, warningsPresent: warningsPresent, logPath: logPath))
-
-    var line = "\(status.rawValue) \(summary)"
-    if warningsPresent {
-      line += " [warnings]"
-    }
-    if status != .pass, let logPath {
-      line += " (\(logPath))"
-    }
-    print(line)
-  }
-
-  /// Prints every recorded step, with log paths for failures.
-  private func printSummary() {
-    guard !steps.isEmpty else { return }
-    print("== Summary")
-    for step in steps {
-      var line = "\(step.status.rawValue) \(step.summary)"
-      if step.warningsPresent {
-        line += " [warnings]"
-      }
-      if step.status == .fail, let logPath = step.logPath {
-        line += " -> \(logPath)"
-      }
-      print(line)
-    }
   }
 }

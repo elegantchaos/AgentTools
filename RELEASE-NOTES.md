@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.0.0
+
+- Adds `agt format`, which formats every tracked and untracked Swift file in the repository and lints them, reporting findings without failing. Swift files under `Tests/**/Resources` are skipped as fixtures. `agt format --check` modifies nothing and fails on any finding.
+- Breaking: `agt validate` no longer formats or lints; it never modifies the project. Run `agt format` before it.
+
 ## 2.1.0
 
 - Adds `agt validate`, the standard Swift validation flow previously provided by `rt validate` in ReleaseTools. Options, behaviour, output, and log locations are unchanged, except that Xcode products now go to `.build/agt-validate/DerivedData`.

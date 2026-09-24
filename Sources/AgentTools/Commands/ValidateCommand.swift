@@ -18,8 +18,8 @@ struct ValidateCommand: ParsableCommand {
     commandName: "validate",
     abstract: "Run the standard validation flow for a Swift repository.",
     discussion: """
-      Run from the repository root. By default, formats and lints changed Swift files, then builds and \
-      tests the Xcode workspace, discovered Swift packages, or Xcode project, in that order of preference. \
+      Run from the repository root. Builds and tests the Xcode workspace, discovered Swift packages, or \
+      Xcode project, in that order of preference. Validation never modifies source; run agt format first. \
       Logs are written to .build/validation-logs and Xcode products to .build/agt-validate/DerivedData.
       """
   )
@@ -68,17 +68,8 @@ struct ValidateCommand: ParsableCommand {
   @Flag(help: "Disable SwiftPM's internal sandbox (opt-in fallback only).")
   var swiftpmDisableSandbox = false
 
-  /// Output mode.
-  @Option(help: "Validation output mode.")
-  var output: ValidateOutputMode = .filtered
-
-  /// Quiet output alias.
-  @Flag(help: "Alias for --output quiet.")
-  var quiet = false
-
-  /// Raw output alias.
-  @Flag(help: "Alias for --output raw.")
-  var raw = false
+  /// Terminal output options.
+  @OptionGroup var output: OutputOptions
 
   /// Executes validation in the current directory.
   mutating func run() throws {
@@ -104,7 +95,7 @@ struct ValidateCommand: ParsableCommand {
       packageDirsOverride: packageDirs.isEmpty ? nil : packageDirs,
       recursivePackageDiscovery: !noRecursivePackages,
       swiftPMDisableSandbox: swiftpmDisableSandbox,
-      outputMode: raw ? .raw : quiet ? .quiet : output
+      outputMode: output.mode
     )
   }
 
