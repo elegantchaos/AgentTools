@@ -7,7 +7,7 @@ import ArgumentParser
 import Foundation
 
 /// Formats and lints every Swift file in the repository in the current directory.
-struct FormatCommand: ParsableCommand {
+struct FormatCommand: AsyncParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "format",
@@ -16,7 +16,8 @@ struct FormatCommand: ParsableCommand {
       Run from the repository root. Formats every tracked and untracked, non-ignored Swift file in place with \
       swift format, then lints them and reports any findings without failing. Swift files inside a Resources \
       directory under Tests are treated as fixtures and skipped; other files can opt out with a \
-      `// swift-format-ignore-file` comment. With --check, modifies nothing and fails on any finding.
+      `// swift-format-ignore-file` comment, and paths can be excluded with format.exclude in .agt/config.json. \
+      With --check, modifies nothing and fails on any finding.
       """
   )
 
@@ -28,7 +29,9 @@ struct FormatCommand: ParsableCommand {
   @OptionGroup var output: OutputOptions
 
   /// Executes formatting in the current directory.
-  mutating func run() throws {
-    try FormatTool(repoPath: FileManager.default.currentDirectoryPath, check: check, outputMode: output.mode).run()
+  mutating func run() async throws {
+    let repoPath = FileManager.default.currentDirectoryPath
+    let excluded = try await ProjectConfiguration.load(repoPath: repoPath).format.exclude ?? []
+    try FormatTool(repoPath: repoPath, check: check, excluded: excluded, outputMode: output.mode).run()
   }
 }

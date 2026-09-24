@@ -37,6 +37,17 @@ struct ProjectConfigurationTests {
     #expect(settings.excludePackages == ["Slow"])
   }
 
+  @Test func formatExclusionsAreRead() async throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try write(#"{"format": {"exclude": ["Extras/Legacy"]}}"#, to: root.appendingPathComponent(".agt/config.json"))
+
+    let configuration = try await ProjectConfiguration.load(repoPath: root.path)
+
+    #expect(configuration.format.exclude == ["Extras/Legacy"])
+    #expect(configuration.validate == ValidateFileSettings())
+  }
+
   @Test func commandLineOptionsOverrideTheConfigurationFile() throws {
     let file = ValidateFileSettings(schemes: ["App"], platforms: ["macOS", "iOS"], testPlatforms: ["iOS"], testSubmodules: "always", excludePackages: ["Slow"])
 

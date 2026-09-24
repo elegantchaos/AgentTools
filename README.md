@@ -83,7 +83,7 @@ agt format
 agt validate
 ```
 
-`agt format` formats every tracked and untracked Swift file in place with `swift format`, then lints them and reports any findings without failing. Swift files inside a `Resources` directory under `Tests` are treated as fixtures and skipped; other files can opt out with a `// swift-format-ignore-file` comment. `agt format --check` modifies nothing and fails on any finding.
+`agt format` formats every tracked and untracked Swift file in place with `swift format`, then lints them and reports any findings without failing. Swift files inside a `Resources` directory under `Tests` are treated as fixtures and skipped; other files can opt out with a `// swift-format-ignore-file` comment, and whole files or directories with `format.exclude` in the project configuration. When linting finds anything, a summary line counts the findings, the files, and the most common rules; the full list is in the lint log. `agt format --check` modifies nothing and fails on any finding.
 
 Run the fast check for a module you have changed:
 
@@ -112,10 +112,13 @@ Xcode products build and test with `xcodebuild`. A Swift package product builds 
 
 #### Configuration
 
-Projects configure validation in `.agt/config.json`, committed, with per-machine overrides in `.agt/local/config.json`, which should be ignored by git. Every key is optional, and command-line options override both files:
+Projects configure formatting and validation in `.agt/config.json`, committed, with per-machine overrides in `.agt/local/config.json`, which should be ignored by git. Every key is optional, and command-line options override both files:
 
 ```json
 {
+  "format": {
+    "exclude": ["Extras/Legacy"]
+  },
   "validate": {
     "schemes": ["App"],
     "platforms": ["macOS", "iOS"],
@@ -126,6 +129,7 @@ Projects configure validation in `.agt/config.json`, committed, with per-machine
 }
 ```
 
+- `format.exclude`: repository-relative files and directories that `agt format` leaves alone.
 - `schemes` (`--schemes`): the schemes that build the product.
 - `platforms` (`--platforms`): the platforms to build for: `macOS`, `iOS`, `tvOS`, `watchOS`, `visionOS`.
 - `testPlatforms` (`--test-platforms`): the platforms to test on; defaults to the build platforms. `["macOS"]` avoids simulators.

@@ -11,13 +11,16 @@ struct FormatTool {
   let repoPath: String
   /// Whether to lint strictly without modifying files.
   let check: Bool
+  /// Repository-relative files and directories to leave alone.
+  let excluded: [String]
   /// Terminal output mode.
   let outputMode: ValidateOutputMode
 
   /// Returns the repository's tracked and untracked, non-ignored Swift files that exist on disk, sorted.
   ///
-  /// Files inside a `Resources` directory under `Tests` are fixtures and are left alone.
-  static func swiftFiles(repoPath: String) throws -> [String] {
+  /// Files inside a `Resources` directory under `Tests` are fixtures and are left alone, as are files at or under the
+  /// repository-relative paths in `excluding`.
+  static func swiftFiles(repoPath: String, excluding excluded: [String] = []) throws -> [String] {
     let result = try ValidationProcess(workingDirectory: repoPath).capture(
       ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.swift"]
     )
@@ -28,8 +31,16 @@ struct FormatTool {
     let files = Set(result.stdout.split(separator: "\0").map(String.init))
     return
       files
-      .filter { !ValidationDiscovery.isInTestResources($0) && FileManager.default.fileExists(atPath: "\(repoPath)/\($0)") }
+      .filter { !ValidationDiscovery.isInTestResources($0) && !isExcluded($0, by: excluded) && FileManager.default.fileExists(atPath: "\(repoPath)/\($0)") }
       .sorted()
+  }
+
+  /// Returns `true` when `file` is one of `excluded`, or lies in a directory that is.
+  private static func isExcluded(_ file: String, by excluded: [String]) -> Bool {
+    excluded.contains { path in
+      let path = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      return file == path || file.hasPrefix("\(path)/")
+    }
   }
 
   /// Returns the `swift format` arguments that rewrite files in place.
@@ -51,7 +62,7 @@ struct FormatTool {
     let runner = StepRunner(repoPath: repoPath, outputMode: outputMode)
     defer { runner.printSummary() }
 
-    let files = try Self.swiftFiles(repoPath: repoPath)
+    let files = try Self.swiftFiles(repoPath: repoPath, excluding: excluded)
     guard !files.isEmpty else {
       runner.record("no Swift files", status: .skip)
       return
@@ -68,12 +79,23 @@ struct FormatTool {
       )
     }
 
+    let lintLog = paths.logPath("lint")
+    defer { printLintSummary(logPath: lintLog) }
     try runner.run(
       title: "Lint \(files.count) Swift files",
       summary: "lint Swift files",
       arguments: Self.lintArguments(files, strict: check),
       display: Self.lintArguments(["<\(files.count) files>"], strict: check),
-      logPath: paths.logPath("lint")
+      logPath: lintLog
     )
+  }
+
+  /// Prints a summary of the lint findings in a log, when there are any.
+  private func printLintSummary(logPath: String) {
+    guard let output = try? String(contentsOfFile: logPath, encoding: .utf8) else { return }
+    let summary = LintSummary(output: output)
+    if summary.findings > 0 {
+      print("Lint: \(summary)")
+    }
   }
 }

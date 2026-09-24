@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.4.3
+
+- `agt format` prints a summary when linting finds anything: the number of findings and files, and the most common rules.
+- Adds `format.exclude` to `.agt/config.json`: repository-relative files and directories that `agt format` leaves alone.
+
 ## 3.4.2
 
 - `agt validate --plan` lists every local package, with how its tests run or why they do not: not part of the product, no tests, in an unchanged submodule, or excluded by configuration.

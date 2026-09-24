@@ -20,11 +20,19 @@ struct ValidateFileSettings: Equatable {
   var excludePackages: [String]?
 }
 
+/// Formatting settings from a project's configuration files; `nil` means not set.
+struct FormatFileSettings: Equatable {
+  /// Repository-relative files and directories that `agt format` leaves alone.
+  var exclude: [String]?
+}
+
 /// A project's `agt` configuration, layered from `.agt/local/config.json` (per machine, not committed) over
 /// `.agt/config.json` (committed).
 struct ProjectConfiguration {
   /// Settings for `agt validate`, under the `validate` key.
   let validate: ValidateFileSettings
+  /// Settings for `agt format`, under the `format` key.
+  let format: FormatFileSettings
 
   /// Returns the configuration files for a repository, most specific first.
   static func files(repoPath: String) -> [String] {
@@ -56,7 +64,8 @@ struct ProjectConfiguration {
         testPlatforms: config.stringArray(forKey: "validate.testPlatforms"),
         testSubmodules: config.string(forKey: "validate.testSubmodules"),
         excludePackages: config.stringArray(forKey: "validate.excludePackages")
-      )
+      ),
+      format: FormatFileSettings(exclude: config.stringArray(forKey: "format.exclude"))
     )
   }
 }
