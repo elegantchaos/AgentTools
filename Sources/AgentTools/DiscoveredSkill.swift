@@ -13,7 +13,7 @@ struct DiscoveredSkill {
   /// Repository-relative source path that was scanned.
   let sourcePath: String
 
-  /// Origin type, for example submodule or repo-local.
+  /// Origin type, such as `submodule`.
   let sourceKind: String
 
   /// Directory containing the SKILL.md file.

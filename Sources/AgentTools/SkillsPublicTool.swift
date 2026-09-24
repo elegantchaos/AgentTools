@@ -19,9 +19,6 @@ final class SkillsPublicTool {
   /// Runtime skill directories that receive links to discovered skills.
   private let linkDestinations: [SkillLinkDestination]
 
-  /// Skill sources that are local to this repository rather than submodules.
-  private let repoLocalSkillPaths = ["skills/refresh-skill"]
-
   /// Creates the tool using environment-driven path overrides when provided.
   convenience init() throws {
     try self.init(
@@ -289,19 +286,12 @@ final class SkillsPublicTool {
     }
   }
 
-  /// Returns all discovered skills from submodules and repo-local sources.
+  /// Returns all discovered skills from submodules.
   private func discoveredSkills() throws -> [DiscoveredSkill] {
     var skills: [DiscoveredSkill] = []
     for submodulePath in try registeredSubmodulePaths() {
       if let skill = try discoverSkill(
         in: submodulePath, sourceKind: "submodule", requiresGitCheckout: true)
-      {
-        skills.append(skill)
-      }
-    }
-    for sourcePath in repoLocalSkillPaths {
-      if let skill = try discoverSkill(
-        in: sourcePath, sourceKind: "repo-local", requiresGitCheckout: false)
       {
         skills.append(skill)
       }
@@ -530,18 +520,6 @@ final class SkillsPublicTool {
         ?? linkDestinations.map { _ in "invalid" }.joined(separator: " | ")
 
       print("| \(skillName) | \(source) | \(workingTree) | \(aheadBehind) | \(linkStatus) |")
-    }
-
-    for sourcePath in repoLocalSkillPaths {
-      guard
-        let skill = try discoverSkill(
-          in: sourcePath, sourceKind: "repo-local", requiresGitCheckout: false)
-      else {
-        continue
-      }
-      print(
-        "| \(skill.name) | \(relativePath(for: skill.skillDirectory)) | repo-local | - | \(linkStatusCells(for: skill)) |"
-      )
     }
   }
 

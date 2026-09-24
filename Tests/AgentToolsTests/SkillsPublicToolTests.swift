@@ -44,9 +44,9 @@ struct SkillsPublicToolTests {
     try withTemporarySkillsRepository { repoRoot, destinations in
       try SkillsPublicTool(repoRoot: repoRoot, linkDestinations: destinations).runLink()
 
-      let expected = repoRoot.appendingPathComponent("skills/refresh-skill").path
+      let expected = repoRoot.appendingPathComponent("skills/example-skill").path
       for destination in destinations {
-        let link = destination.directory.appendingPathComponent("refresh")
+        let link = destination.directory.appendingPathComponent("example")
         #expect(try FileManager.default.destinationOfSymbolicLink(atPath: link.path) == expected)
       }
     }
@@ -55,7 +55,7 @@ struct SkillsPublicToolTests {
   /// Leaves a real directory in place rather than deleting it to create a link.
   @Test func refusesToReplaceRealDirectory() throws {
     try withTemporarySkillsRepository { repoRoot, destinations in
-      let existing = destinations[0].directory.appendingPathComponent("refresh")
+      let existing = destinations[0].directory.appendingPathComponent("example")
       let marker = existing.appendingPathComponent("SKILL.md")
       try write("user skill", to: marker)
 
@@ -66,7 +66,7 @@ struct SkillsPublicToolTests {
     }
   }
 
-  /// Creates a repository with one repo-local skill and two empty destinations.
+  /// Creates a repository with one checked-out skill submodule and two empty destinations.
   private func withTemporarySkillsRepository(
     _ body: (URL, [SkillLinkDestination]) throws -> Void
   ) throws {
@@ -77,8 +77,13 @@ struct SkillsPublicToolTests {
     defer { try? FileManager.default.removeItem(at: root) }
 
     try write(
-      "---\nname: refresh\n---\n",
-      to: repoRoot.appendingPathComponent("skills/refresh-skill/SKILL.md")
+      "[submodule \"skills/example-skill\"]\n\tpath = skills/example-skill\n",
+      to: repoRoot.appendingPathComponent(".gitmodules")
+    )
+    try write("gitdir: ../../.git/modules/example-skill\n", to: repoRoot.appendingPathComponent("skills/example-skill/.git"))
+    try write(
+      "---\nname: example\n---\n",
+      to: repoRoot.appendingPathComponent("skills/example-skill/SKILL.md")
     )
     let destinations = [
       SkillLinkDestination(label: "codex", directory: root.appendingPathComponent("codex/skills")),

@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2.1.0
+
+- Adds `agt validate`, the standard Swift validation flow previously provided by `rt validate` in ReleaseTools. Options, behaviour, output, and log locations are unchanged, except that Xcode products now go to `.build/agt-validate/DerivedData`.
+- Help text and option errors now come from ArgumentParser, so their wording differs from `rt validate`.
+- Removes the obsolete `skills/refresh-skill` repo-local skill source; the refresh skill now ships in the baseline plugin.
+
 ## 2.0.1
 
 - `agt skills link` links skills into `~/.codex/skills` and `~/.claude/skills`, honouring `CODEX_HOME` and `CLAUDE_CONFIG_DIR`.

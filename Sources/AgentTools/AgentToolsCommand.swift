@@ -5,16 +5,17 @@
 
 import ArgumentParser
 
-/// Entry point for agent repository maintenance commands.
+/// Entry point for shared agent maintenance and repository validation commands.
 @main
 struct AgentTools: ParsableCommand {
   /// Top-level command configuration.
   static let configuration = CommandConfiguration(
     commandName: "agt",
-    abstract: "Maintenance tools for the shared agents repository.",
+    abstract: "Maintenance and validation tools for agent-driven development.",
     subcommands: [
       Rules.self,
       Skills.self,
+      ValidateCommand.self,
     ]
   )
 }
