@@ -28,11 +28,16 @@ final class StepRunner {
   /// Runs one logged step, recording PASS or FAIL and throwing on failure.
   ///
   /// `display` replaces the arguments when echoing the command, for commands whose full argument list is too long to show.
-  func run(title: String, summary: String, arguments: [String], display: [String]? = nil, logPath: String) throws {
+  ///
+  /// `workingDirectory` runs the command in a directory other than the repository.
+  func run(title: String, summary: String, arguments: [String], display: [String]? = nil, workingDirectory: String? = nil, logPath: String) throws {
     let command = (display ?? arguments).joined(separator: " ")
     if planOnly {
       plannedCommands.append(arguments)
       print("\(plannedCommands.count). \(summary)")
+      if let workingDirectory {
+        print("   in \(workingDirectory)")
+      }
       print("   + /usr/bin/env \(command)")
       return
     }
@@ -40,6 +45,10 @@ final class StepRunner {
     print("== \(title)")
     print("+ /usr/bin/env \(command)")
 
+    let process = workingDirectory.map { ValidationProcess(workingDirectory: $0) } ?? self.process
+    if let workingDirectory {
+      print("  in \(workingDirectory)")
+    }
     let result = try process.runLogged(arguments, logPath: logPath, outputMode: outputMode)
 
     guard result.status == 0 else {

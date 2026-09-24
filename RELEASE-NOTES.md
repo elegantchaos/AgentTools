@@ -1,5 +1,9 @@
 # Release Notes
 
+## 3.4.1
+
+- Fixes local packages whose tests were skipped when Xcode listed no scheme for them. A package is part of the product when the workspace lists it, a project references it, it is the root package, or it is a local dependency of one of those; Xcode only lists a scheme for such a package when a scheme file exists. Packages without a scheme in the product's workspace or project now test with SwiftPM on macOS, and with `xcodebuild` in their own directory on other platforms.
+
 ## 3.4.0
 
 - Full validation covers the whole product. It builds every product scheme for every supported platform, macOS first, then runs, platform by platform, the product schemes' tests and the tests of the local Swift packages that are part of the product, on simulators for iOS, tvOS, watchOS, and visionOS. Previously it took one of three routes (workspace, packages, or project), and ran no Xcode tests unless asked.

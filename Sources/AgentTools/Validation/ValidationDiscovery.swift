@@ -71,6 +71,33 @@ enum ValidationDiscovery {
     return ordered
   }
 
+  /// Returns the packages reachable from `roots` through local path dependencies, including the roots.
+  static func productPackages(roots: [String], localDependencies: [String: [String]]) -> Set<String> {
+    var reached = Set<String>()
+    var pending = roots
+    while let next = pending.popLast() {
+      guard reached.insert(next).inserted else { continue }
+      pending.append(contentsOf: localDependencies[next] ?? [])
+    }
+    return reached
+  }
+
+  /// Returns the directories of the packages a workspace or project references, resolved against their files.
+  static func referencedPackages(container: [String]) -> [String] {
+    guard container.count == 2 else { return [] }
+    let path = container[1]
+    let directory = URL(fileURLWithPath: path).deletingLastPathComponent()
+    if container[0] == "-project" {
+      guard let contents = try? String(contentsOfFile: "\(path)/project.pbxproj", encoding: .utf8) else { return [] }
+      return XcodeSchemes.localPackagePaths(fromProjectFile: contents).map { directory.appendingPathComponent($0).standardizedFileURL.path }
+    }
+    guard let contents = try? String(contentsOfFile: "\(path)/contents.xcworkspacedata", encoding: .utf8) else { return [] }
+    return XcodeSchemes.memberPaths(fromWorkspaceData: contents).flatMap { member -> [String] in
+      let memberPath = directory.appendingPathComponent(member).standardizedFileURL.path
+      return member.hasSuffix(".xcodeproj") ? referencedPackages(container: ["-project", memberPath]) : [memberPath]
+    }
+  }
+
   /// Returns the repository-relative paths of the files whose contents determine discovery's results: package
   /// manifests and resolved dependencies, Xcode workspaces and projects, and their shared and user schemes.
   static func fingerprintFiles(repoPath: String) -> [String] {

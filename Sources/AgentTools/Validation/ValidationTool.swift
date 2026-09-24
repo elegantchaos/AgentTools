@@ -91,7 +91,13 @@ final class ValidationTool {
       if step.skipped {
         runner.record(step.summary, status: .skip)
       } else {
-        try runner.run(title: step.title, summary: step.summary, arguments: step.arguments, logPath: paths.logPath(step.logName))
+        try runner.run(
+          title: step.title,
+          summary: step.summary,
+          arguments: step.arguments,
+          workingDirectory: step.workingDirectory,
+          logPath: paths.logPath(step.logName)
+        )
       }
     }
   }
@@ -105,6 +111,7 @@ final class ValidationTool {
     let schemes = try listSchemes(container)
     let changedSubmodules = try changedSubmodulePaths()
     var packages: [LocalPackage] = []
+    var descriptions: [String: SwiftPackageDescription] = [:]
     var rootPackage: SwiftPackageDescription?
     for packageDir in packageDirs {
       let submodule = SubmoduleStatus.enclosingSubmodule(of: packageDir, repoPath: repoPath)
@@ -121,6 +128,7 @@ final class ValidationTool {
         runner.record("test \(relativePath(packageDir)) (cannot describe package: \(reason.trimmingCharacters(in: .whitespaces)))", status: .skip)
         continue
       }
+      descriptions[packageDir] = description
       if submodule == nil, relativePath(packageDir).isEmpty {
         rootPackage = description
       }
@@ -134,6 +142,18 @@ final class ValidationTool {
           submoduleChanged: submoduleChanged
         )
       )
+    }
+
+    let roots = container.isEmpty ? [repoPath] : ValidationDiscovery.referencedPackages(container: container)
+    let localDependencies = Dictionary(
+      packages.map { package in
+        (ValidationPaths.canonical(package.directory), descriptions[package.directory]?.localDependencyPaths.map(ValidationPaths.canonical) ?? [])
+      },
+      uniquingKeysWith: { first, _ in first }
+    )
+    let product = ValidationDiscovery.productPackages(roots: roots.map(ValidationPaths.canonical), localDependencies: localDependencies)
+    for index in packages.indices {
+      packages[index].inProduct = product.contains(ValidationPaths.canonical(packages[index].directory))
     }
 
     let productSchemes = try self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
@@ -164,6 +184,14 @@ final class ValidationTool {
     let testPlatforms = config.testPlatforms.isEmpty ? buildPlatforms : config.testPlatforms
     let needsSimulators = testPlatforms.contains { $0 != .macOS }
     let testDestinations = try needsSimulators ? self.testDestinations(container: container, scheme: productSchemes[0], platforms: testPlatforms, paths: paths) : [.macOS: "platform=macOS"]
+
+    if needsSimulators {
+      for index in packages.indices where packages[index].inProduct && packages[index].hasTests && packages[index].scheme == nil {
+        guard let description = descriptions[packages[index].directory] else { continue }
+        let packageSchemes = try listSchemes([], in: packages[index].directory)
+        packages[index].packageScheme = LocalPackage.scheme(for: description, in: packageSchemes)
+      }
+    }
 
     return ValidationProject(
       container: container,
@@ -327,13 +355,16 @@ final class ValidationTool {
     return try cache.value(key, isComplete: isComplete, compute: compute)
   }
 
-  /// Returns the schemes of the root container, failing when `xcodebuild` cannot read it, so validation never skips it.
-  private func listSchemes(_ container: [String]) throws -> [String] {
-    try discovered("schemes \(container.joined(separator: " "))") {
+  /// Returns the schemes of a workspace, project, or package, failing when `xcodebuild` cannot read it, so validation
+  /// never skips it. An empty container means the package in `directory`, which defaults to the repository.
+  private func listSchemes(_ container: [String], in directory: String? = nil) throws -> [String] {
+    let location = directory ?? repoPath
+    return try discovered("schemes \(location) \(container.joined(separator: " "))") {
+      let process = directory.map { ValidationProcess(workingDirectory: $0) } ?? self.process
       let result = try process.capture(["xcodebuild", "-list", "-json"] + container + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults)
       guard result.status == 0 else {
         let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
-        throw ToolError("xcodebuild cannot read \(container.last ?? repoPath):\n\(details)")
+        throw ToolError("xcodebuild cannot read \(container.last ?? location):\n\(details)")
       }
       return try XcodeSchemes.schemes(fromListJSON: result.stdout)
     }

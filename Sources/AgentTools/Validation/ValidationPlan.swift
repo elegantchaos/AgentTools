@@ -34,19 +34,23 @@ struct PlannedStep: Equatable {
   let logName: String
   /// Whether the step is recorded as skipped instead of run.
   var skipped = false
+  /// The directory to run the command in, when not the repository.
+  var workingDirectory: String?
 }
 
 /// Plans full validation: every product scheme built for every platform, then, platform by platform, the product
 /// schemes' tests and the tests of the local packages in the product.
 ///
 /// A product with no Xcode workspace or project builds and tests with SwiftPM on macOS, because Xcode runs a package's
-/// build plugins only for its all-targets scheme, and uses `xcodebuild` only for other platforms.
+/// build plugins only for its all-targets scheme, and uses `xcodebuild` only for other platforms. A package's tests run
+/// through the root container's scheme for it when there is one, sharing the product's build; otherwise with SwiftPM on
+/// macOS, and with `xcodebuild` in the package's own directory on other platforms.
 enum ValidationPlan {
-  /// Returns the packages whose tests run: those with tests that are part of the product, in the repository or in a
-  /// submodule the policy includes, and not excluded by name.
+  /// Returns the packages whose tests run: those with tests that the product uses, in the repository or in a submodule
+  /// the policy includes, and not excluded by name.
   static func testedPackages(_ packages: [LocalPackage], testSubmodules: TestSubmodules, excluded: [String]) -> [LocalPackage] {
     packages.filter { package in
-      guard package.hasTests, package.scheme != nil, !excluded.contains(package.name) else { return false }
+      guard package.hasTests, package.inProduct, !excluded.contains(package.name) else { return false }
       guard package.submodule != nil else { return true }
       switch testSubmodules {
         case .always: return true
@@ -106,31 +110,25 @@ enum ValidationPlan {
     }
 
     let tested = testedPackages(project.packages, testSubmodules: testSubmodules, excluded: excludedPackages)
-    var testSchemes: [String] = []
-    for scheme in project.productSchemes.filter(project.schemesWithTests.contains) + tested.compactMap(\.scheme) where !testSchemes.contains(scheme) {
-      testSchemes.append(scheme)
-    }
-    guard !testSchemes.isEmpty else { return steps }
+    let productTests = project.productSchemes.filter(project.schemesWithTests.contains)
+    guard !productTests.isEmpty || !tested.isEmpty else { return steps }
 
     for platform in ApplePlatform.hostFirst(project.testPlatforms) {
-      if usesSwiftPM(platform) {
-        for package in tested {
-          steps.append(
-            PlannedStep(
-              title: "Test \(package.name) on macOS",
-              summary: "test \(package.name) (macOS)",
-              arguments: swift("test", package.directory),
-              logName: "test_\(package.name)_macOS"
-            )
-          )
-        }
-        continue
-      }
       guard let destination = project.testDestinations[platform] else {
         steps.append(PlannedStep(title: "", summary: "test \(platform.rawValue) (no available simulator)", arguments: [], logName: "", skipped: true))
         continue
       }
-      for scheme in testSchemes {
+
+      var containerSchemes: [String] = []
+      for scheme in productTests where !containerSchemes.contains(scheme) {
+        containerSchemes.append(scheme)
+      }
+      for package in tested where !usesSwiftPM(platform) {
+        if let scheme = package.scheme, !containerSchemes.contains(scheme) {
+          containerSchemes.append(scheme)
+        }
+      }
+      for scheme in containerSchemes {
         steps.append(
           PlannedStep(
             title: "Test \(scheme) on \(platform.rawValue)",
@@ -139,6 +137,30 @@ enum ValidationPlan {
             logName: "test_\(scheme)_\(platform.rawValue)"
           )
         )
+      }
+
+      for package in tested where package.scheme == nil || usesSwiftPM(platform) {
+        let summary = "test \(package.name) (\(platform.rawValue))"
+        let logName = "test_\(package.name)_\(platform.rawValue)"
+        if platform == .macOS {
+          steps.append(PlannedStep(title: "Test \(package.name) on macOS", summary: summary, arguments: swift("test", package.directory), logName: logName))
+        } else if let scheme = package.packageScheme {
+          let arguments =
+            ["xcodebuild", "-scheme", scheme, "-destination", destination, "-derivedDataPath", paths.packageDerivedDataPath(forPackage: package.directory)]
+            + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults + (quiet ? ["-quiet"] : []) + ["CODE_SIGNING_ALLOWED=NO"]
+            + sandbox.xcodebuildBuildSettings + ["test"]
+          steps.append(
+            PlannedStep(
+              title: "Test \(package.name) on \(platform.rawValue)",
+              summary: summary,
+              arguments: arguments,
+              logName: logName,
+              workingDirectory: package.directory
+            )
+          )
+        } else {
+          steps.append(PlannedStep(title: "", summary: "\(summary) (no Xcode scheme for the package)", arguments: [], logName: "", skipped: true))
+        }
       }
     }
     return steps

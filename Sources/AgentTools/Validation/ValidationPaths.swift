@@ -34,11 +34,21 @@ struct ValidationPaths {
 
   /// Returns the private SwiftPM build directory for a package, keeping the root package apart from nested ones.
   func swiftPMScratchPath(forPackage packageDir: String) -> String {
+    "\(root)/swiftpm/\(packageLocation(packageDir))"
+  }
+
+  /// Returns the private DerivedData directory for building a package from its own directory with `xcodebuild`.
+  func packageDerivedDataPath(forPackage packageDir: String) -> String {
+    "\(root)/\(packageLocation(packageDir))/DerivedData"
+  }
+
+  /// Returns `root` for the root package, or `packages/` followed by the package's repository-relative path.
+  private func packageLocation(_ packageDir: String) -> String {
     let repo = Self.canonical(repoPath)
     let package = Self.canonical(packageDir)
-    guard package != repo else { return "\(root)/swiftpm/root" }
+    guard package != repo else { return "root" }
     let relative = package.hasPrefix("\(repo)/") ? String(package.dropFirst(repo.count + 1)) : package
-    return "\(root)/swiftpm/packages/\(relative)"
+    return "packages/\(relative)"
   }
 
   /// Returns a path with macOS's `/private` prefix removed from `/private/var`, `/private/tmp`, and `/private/etc`,

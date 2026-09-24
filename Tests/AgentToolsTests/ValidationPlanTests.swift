@@ -216,6 +216,71 @@ struct ValidationPlanTests {
     #expect(steps.map(\.summary) == ["build Tool (macOS)"])
   }
 
+  @Test func productPackagesWithoutAContainerSchemeUseTheirOwnDirectory() {
+    let project = ValidationProject(
+      container: ["-project", "/repo/App.xcodeproj"],
+      productSchemes: ["App"],
+      schemesWithTests: [],
+      buildPlatforms: [.macOS],
+      testPlatforms: [.macOS, .iOS],
+      testDestinations: [.macOS: "platform=macOS", .iOS: "platform=iOS Simulator,name=iPhone,OS=27.0"],
+      packages: [
+        LocalPackage(directory: "/repo/Dependencies/Kit", name: "Kit", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false, packageScheme: "Kit-Package"),
+        LocalPackage(directory: "/repo/Dependencies/Tool", name: "Tool", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false),
+      ]
+    )
+
+    let steps = ValidationPlan.steps(
+      for: project,
+      testSubmodules: .changed,
+      excludedPackages: [],
+      paths: ValidationPaths(repoPath: "/repo"),
+      sandbox: EnclosingSandbox(isNested: false),
+      disableSwiftPMSandbox: false,
+      quiet: true
+    )
+
+    #expect(steps.map(\.summary) == ["build App (macOS)", "test Kit (macOS)", "test Tool (macOS)", "test Kit (iOS)", "test Tool (iOS) (no Xcode scheme for the package)"])
+    #expect(steps[1].arguments == ["swift", "test", "--package-path", "/repo/Dependencies/Kit", "--scratch-path", "/repo/.build/agt/swiftpm/packages/Dependencies/Kit"])
+    #expect(steps[3].workingDirectory == "/repo/Dependencies/Kit")
+    #expect(
+      steps[3].arguments == [
+        "xcodebuild", "-scheme", "Kit-Package", "-destination", "platform=iOS Simulator,name=iPhone,OS=27.0",
+        "-derivedDataPath", "/repo/.build/agt/packages/Dependencies/Kit/DerivedData", "-skipPackagePluginValidation", "-skipMacroValidation",
+        "-quiet", "CODE_SIGNING_ALLOWED=NO", "test",
+      ]
+    )
+    #expect(steps[4].skipped)
+  }
+
+  @Test func localPackageReferencesComeFromProjectsAndWorkspaces() {
+    let project = """
+      2247C4EC2F91215F00B04B6D /* XCLocalSwiftPackageReference "Dependencies/ClockSyncKit" */ = {
+        isa = XCLocalSwiftPackageReference;
+        relativePath = Dependencies/ClockSyncKit;
+      };
+      3347C4EC /* XCLocalSwiftPackageReference "../Shared Kit" */ = {
+        isa = XCLocalSwiftPackageReference;
+        relativePath = "../Shared Kit";
+      };
+      """
+    #expect(XcodeSchemes.localPackagePaths(fromProjectFile: project) == ["Dependencies/ClockSyncKit", "../Shared Kit"])
+
+    let workspace = #"<Workspace version = "1.0"><FileRef location = "group:App.xcodeproj"></FileRef><FileRef location = "container:Dependencies/Core"></FileRef></Workspace>"#
+    #expect(XcodeSchemes.memberPaths(fromWorkspaceData: workspace) == ["App.xcodeproj", "Dependencies/Core"])
+  }
+
+  @Test func productPackagesIncludeLocalDependenciesTransitively() {
+    let dependencies = ["/repo/App": ["/repo/Core"], "/repo/Core": ["/repo/Logger", "/repo/Core"], "/repo/Logger": []]
+    #expect(ValidationDiscovery.productPackages(roots: ["/repo/App"], localDependencies: dependencies) == ["/repo/App", "/repo/Core", "/repo/Logger"])
+  }
+
+  @Test func packageDescriptionsListLocalDependencies() throws {
+    let json = #"{"name": "Core", "targets": [], "dependencies": [{"identity": "feedback", "type": "fileSystem", "path": "/repo/Feedback"}, {"identity": "files", "type": "sourceControl", "url": "https://example.com/files.git"}]}"#
+    let package = try JSONDecoder().decode(SwiftPackageDescription.self, from: Data(json.utf8))
+    #expect(package.localDependencyPaths == ["/repo/Feedback"])
+  }
+
   /// Local packages in an app workspace: in-repo packages, changed and unchanged submodules, and packages
   /// without tests, outside the product, or excluded by configuration.
   private let examplePackages = [
@@ -223,7 +288,7 @@ struct ValidationPlanTests {
     LocalPackage(directory: "/repo/Dependencies/Logger", name: "Logger", hasTests: true, scheme: "Logger-Package", submodule: "Dependencies/Logger", submoduleChanged: false),
     LocalPackage(directory: "/repo/Dependencies/Commands", name: "Commands", hasTests: true, scheme: "Commands-Package", submodule: "Dependencies/Commands", submoduleChanged: true),
     LocalPackage(directory: "/repo/Dependencies/Icons", name: "Icons", hasTests: false, scheme: "Icons", submodule: nil, submoduleChanged: false),
-    LocalPackage(directory: "/repo/Examples/Demo", name: "Demo", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false),
+    LocalPackage(directory: "/repo/Examples/Demo", name: "Demo", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false, inProduct: false),
     LocalPackage(directory: "/repo/Dependencies/Keychain", name: "Keychain", hasTests: true, scheme: "Keychain", submodule: nil, submoduleChanged: false),
   ]
 }

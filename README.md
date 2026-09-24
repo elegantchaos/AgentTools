@@ -102,7 +102,9 @@ Full validation builds the product first, then tests it:
 
 The product is the Xcode workspace in the repository root, or else its Xcode project, or else its root `Package.swift`. The default product scheme is the one named after the repository, or the root package's scheme when there is no workspace or project. For an Xcode product, the platforms are those its schemes support; a Swift package product is built for macOS unless configured otherwise.
 
-A local Swift package is part of the product when Xcode lists a scheme for it in the product's workspace, project, or package: packages added to the workspace, and local dependencies of the root package. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so by default their tests run only when the submodule differs from the commit the repository records, for example after editing it in place.
+A local Swift package is part of the product when the product uses it: the workspace lists it, a project references it as a local package, it is the root package of a Swift package product, or it is a local path dependency of one of those. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so by default their tests run only when the submodule differs from the commit the repository records, for example after editing it in place.
+
+A package's tests run through the product's scheme for it when the workspace or project has one, sharing the product's build. Otherwise they run with SwiftPM on macOS, and on other platforms with `xcodebuild` in the package's own directory, using the scheme Xcode creates for the package; a package with no such scheme is reported as skipped on that platform.
 
 Tests on iOS, tvOS, watchOS, and visionOS run on a simulator: for each platform, the first one with the newest OS that Xcode offers for the product scheme. A platform without an available simulator is reported as skipped.
 
