@@ -132,7 +132,7 @@ Projects configure validation in `.agt/config.json`, committed, with per-machine
 - `testSubmodules` (`--test-submodules`): when to test packages in git submodules: `changed` (the default), `always`, or `never`.
 - `excludePackages`: packages whose tests never run, by package name.
 
-See what validation would do, with each step's exact command, without running anything:
+See what validation would do without running anything: every local package, with how its tests run or why they do not, then each step with its exact command:
 
 ```shell
 agt validate --plan

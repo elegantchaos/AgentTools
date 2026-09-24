@@ -93,7 +93,8 @@ enum ValidationDiscovery {
     }
     guard let contents = try? String(contentsOfFile: "\(path)/contents.xcworkspacedata", encoding: .utf8) else { return [] }
     return XcodeSchemes.memberPaths(fromWorkspaceData: contents).flatMap { member -> [String] in
-      let memberPath = directory.appendingPathComponent(member).standardizedFileURL.path
+      let memberURL = member.hasPrefix("/") ? URL(fileURLWithPath: member) : directory.appendingPathComponent(member)
+      let memberPath = memberURL.standardizedFileURL.path
       return member.hasSuffix(".xcodeproj") ? referencedPackages(container: ["-project", memberPath]) : [memberPath]
     }
   }

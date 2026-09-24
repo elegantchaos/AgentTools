@@ -270,6 +270,55 @@ struct ValidationPlanTests {
     #expect(XcodeSchemes.memberPaths(fromWorkspaceData: workspace) == ["App.xcodeproj", "Dependencies/Core"])
   }
 
+  @Test func planListsEveryPackageWithItsReason() {
+    let project = ValidationProject(
+      container: ["-workspace", "/repo/App.xcworkspace"],
+      productSchemes: ["App"],
+      schemesWithTests: [],
+      buildPlatforms: [.macOS],
+      testPlatforms: [.macOS],
+      testDestinations: [.macOS: "platform=macOS"],
+      packages: examplePackages + [
+        LocalPackage(directory: "/repo/Dependencies/Kit", name: "Kit", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false)
+      ],
+      unexaminedSubmodulePackages: ["/repo/Dependencies/Slack"]
+    )
+
+    #expect(
+      ValidationPlan.packageSummaries(for: project, testSubmodules: .changed, excludedPackages: ["Keychain"], repoPath: "/repo") == [
+        "Dependencies/Commands (Commands): tested, with scheme Commands-Package",
+        "Dependencies/Core (Core): tested, with scheme Core",
+        "Dependencies/Icons (Icons): not tested, has no tests",
+        "Dependencies/Keychain (Keychain): not tested, excluded by configuration",
+        "Dependencies/Kit (Kit): tested, in its own directory",
+        "Dependencies/Logger (Logger): not tested, in an unchanged submodule",
+        "Dependencies/Slack: not tested, in an unchanged submodule",
+        "Examples/Demo (Demo): not tested, not part of the product",
+      ]
+    )
+    #expect(
+      ValidationPlan.packageSummaries(for: project, testSubmodules: .never, excludedPackages: [], repoPath: "/repo")
+        .contains("Dependencies/Slack: not tested, in a submodule, and testSubmodules is never")
+    )
+  }
+
+  @Test func workspaceMembersWithAbsolutePathsAreResolved() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AgentTools-Workspace-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let project = root.appendingPathComponent("App.xcodeproj")
+    let workspace = root.appendingPathComponent("App.xcworkspace")
+    try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+    try "isa = XCLocalSwiftPackageReference;\n relativePath = Dependencies/Kit;".write(
+      to: project.appendingPathComponent("project.pbxproj"), atomically: true, encoding: .utf8)
+    try #"<Workspace><FileRef location = "container:\#(project.path)"></FileRef><FileRef location = "absolute:\#(root.path)/Shared"></FileRef><FileRef location = "group:Dependencies/Core"></FileRef></Workspace>"#.write(
+      to: workspace.appendingPathComponent("contents.xcworkspacedata"), atomically: true, encoding: .utf8)
+
+    let packages = ValidationDiscovery.referencedPackages(container: ["-workspace", workspace.path]).map(ValidationPaths.canonical)
+
+    #expect(packages == ["Dependencies/Kit", "Shared", "Dependencies/Core"].map { ValidationPaths.canonical(root.appendingPathComponent($0).path) })
+  }
+
   @Test func productPackagesIncludeLocalDependenciesTransitively() {
     let dependencies = ["/repo/App": ["/repo/Core"], "/repo/Core": ["/repo/Logger", "/repo/Core"], "/repo/Logger": []]
     #expect(ValidationDiscovery.productPackages(roots: ["/repo/App"], localDependencies: dependencies) == ["/repo/App", "/repo/Core", "/repo/Logger"])

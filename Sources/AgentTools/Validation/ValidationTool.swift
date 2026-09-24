@@ -78,6 +78,19 @@ final class ValidationTool {
 
     let container = workspace.map { ["-workspace", $0] } ?? project.map { ["-project", $0] } ?? []
     let discovered = try discoverProject(container: container, packageDirs: packageDirs, paths: paths)
+    if config.planOnly {
+      print("== Packages")
+      let summaries = ValidationPlan.packageSummaries(
+        for: discovered,
+        testSubmodules: config.testSubmodules,
+        excludedPackages: config.excludedPackages,
+        repoPath: repoPath
+      )
+      for summary in summaries {
+        print(summary)
+      }
+      print("== Steps")
+    }
     let steps = ValidationPlan.steps(
       for: discovered,
       testSubmodules: config.testSubmodules,
@@ -112,11 +125,13 @@ final class ValidationTool {
     let changedSubmodules = try changedSubmodulePaths()
     var packages: [LocalPackage] = []
     var descriptions: [String: SwiftPackageDescription] = [:]
+    var unexamined: [String] = []
     var rootPackage: SwiftPackageDescription?
     for packageDir in packageDirs {
       let submodule = SubmoduleStatus.enclosingSubmodule(of: packageDir, repoPath: repoPath)
       let submoduleChanged = submodule.map(changedSubmodules.contains) ?? false
       if submodule != nil, config.testSubmodules == .never || (config.testSubmodules == .changed && !submoduleChanged) {
+        unexamined.append(packageDir)
         continue
       }
 
@@ -200,7 +215,8 @@ final class ValidationTool {
       buildPlatforms: buildPlatforms,
       testPlatforms: testPlatforms,
       testDestinations: testDestinations,
-      packages: packages
+      packages: packages,
+      unexaminedSubmodulePackages: unexamined
     )
   }
 

@@ -36,9 +36,10 @@ enum XcodeSchemes {
     }
   }
 
-  /// Returns the paths of a workspace's members, such as projects and packages, relative to the workspace's directory.
+  /// Returns the paths of a workspace's members, such as projects and packages: absolute, or relative to the
+  /// workspace's directory.
   static func memberPaths(fromWorkspaceData contents: String) -> [String] {
-    guard let regex = try? NSRegularExpression(pattern: #"location = "(?:group|container):([^"]*)""#) else { return [] }
+    guard let regex = try? NSRegularExpression(pattern: #"location = "(?:group|container|absolute):([^"]*)""#) else { return [] }
     let range = NSRange(contents.startIndex..., in: contents)
     return regex.matches(in: contents, range: range).compactMap { match in
       Range(match.range(at: 1), in: contents).map { String(contents[$0]) }

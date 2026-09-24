@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.4.2
+
+- `agt validate --plan` lists every local package, with how its tests run or why they do not: not part of the product, no tests, in an unchanged submodule, or excluded by configuration.
+- Fixes workspaces that record a member project or package with an absolute path, such as `container:/path/to/App.xcodeproj`. The member was joined to the workspace's directory, so the project's local packages were not found and their tests did not run.
+
 ## 3.4.1
 
 - Fixes local packages whose tests were skipped when Xcode listed no scheme for them. A package is part of the product when the workspace lists it, a project references it, it is the root package, or it is a local dependency of one of those; Xcode only lists a scheme for such a package when a scheme file exists. Packages without a scheme in the product's workspace or project now test with SwiftPM on macOS, and with `xcodebuild` in their own directory on other platforms.

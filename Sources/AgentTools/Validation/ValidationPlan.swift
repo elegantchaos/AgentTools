@@ -20,6 +20,8 @@ struct ValidationProject {
   let testDestinations: [ApplePlatform: String]
   /// Swift packages in the repository.
   let packages: [LocalPackage]
+  /// Directories of packages in submodules that the submodule policy excluded before they were examined.
+  var unexaminedSubmodulePackages: [String] = []
 }
 
 /// One step of a validation plan.
@@ -58,6 +60,35 @@ enum ValidationPlan {
         case .changed: return package.submoduleChanged
       }
     }
+  }
+
+  /// Returns one line per local package, sorted by repository-relative path, with its name, saying how its tests run or
+  /// why they do not.
+  static func packageSummaries(for project: ValidationProject, testSubmodules: TestSubmodules, excludedPackages: [String], repoPath: String) -> [String] {
+    let repo = ValidationPaths.canonical(repoPath)
+    func relative(_ directory: String) -> String {
+      let path = ValidationPaths.canonical(directory)
+      return path == repo ? "." : path.hasPrefix("\(repo)/") ? String(path.dropFirst(repo.count + 1)) : path
+    }
+    let submoduleReason = testSubmodules == .never ? "in a submodule, and testSubmodules is never" : "in an unchanged submodule"
+    let tested = testedPackages(project.packages, testSubmodules: testSubmodules, excluded: excludedPackages)
+
+    let summaries = project.packages.map { package -> String in
+      let outcome: String
+      if tested.contains(package) {
+        outcome = package.scheme.map { "tested, with scheme \($0)" } ?? "tested, in its own directory"
+      } else if !package.inProduct {
+        outcome = "not tested, not part of the product"
+      } else if !package.hasTests {
+        outcome = "not tested, has no tests"
+      } else if excludedPackages.contains(package.name) {
+        outcome = "not tested, excluded by configuration"
+      } else {
+        outcome = "not tested, \(submoduleReason)"
+      }
+      return "\(relative(package.directory)) (\(package.name)): \(outcome)"
+    }
+    return (summaries + project.unexaminedSubmodulePackages.map { "\(relative($0)): not tested, \(submoduleReason)" }).sorted()
   }
 
   /// Returns the steps of full validation, with macOS first among the platforms. The runner stops at the first failure.
