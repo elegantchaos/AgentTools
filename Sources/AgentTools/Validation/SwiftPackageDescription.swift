@@ -4,13 +4,15 @@
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 /// Minimal package metadata decoded from `swift package describe --type json`.
-struct SwiftPackageDescription: Decodable {
+struct SwiftPackageDescription: Codable {
   /// Minimal target metadata.
-  struct Target: Decodable {
+  struct Target: Codable {
     /// The target name.
     let name: String
     /// The package target kind.
     let type: String
+    /// The target's source directory, relative to the package.
+    var path: String?
   }
 
   /// Targets defined by the package.

@@ -29,4 +29,6 @@ struct ValidationConfig {
   let swiftPMDisableSandbox: Bool
   /// Validation output mode.
   let outputMode: ValidateOutputMode
+  /// Whether to list the steps instead of running them.
+  let planOnly: Bool
 }

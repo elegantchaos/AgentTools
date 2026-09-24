@@ -93,9 +93,17 @@ agt validate --target <name>
 
 When the fast check passes, run full validation.
 
+See what validation would do, with each step's exact command, without running anything:
+
+```shell
+agt validate --plan
+```
+
 Each run finishes with a PASS/FAIL/SKIP summary. Terminal output is shaped with `--output filtered|quiet|raw` (`filtered` is the default).
 
 Validation writes its build products and per-step logs under `.build/agt/` in the repository, so it never shares a build directory with an IDE or with your own builds. Downloads use SwiftPM's and Xcode's standard caches, so they are shared.
+
+Discovery, which finds packages, workspaces, schemes, and the platforms each scheme supports, can take tens of seconds on a large project. Its results are cached in `.build/agt/discovery.json` and reused until a package manifest, `Package.resolved`, Xcode project, workspace, or scheme changes, or `agt` or the selected Xcode changes. `agt validate --clean` discards the cache along with the build products.
 
 Run `agt format --help` or `agt validate --help` for all options.
 

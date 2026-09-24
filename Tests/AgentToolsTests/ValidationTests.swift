@@ -147,6 +147,17 @@ struct ValidationTests {
     #expect(config.outputMode == expected)
   }
 
+  @Test func planDefaultsToOff() throws {
+    #expect(try parseConfig([]).planOnly == false)
+    #expect(try parseConfig(["--plan"]).planOnly)
+  }
+
+  @Test func planningRecordsStepsWithoutRunningThem() throws {
+    let runner = StepRunner(repoPath: "/", outputMode: .quiet, planOnly: true)
+    try runner.run(title: "Fail", summary: "fail", arguments: ["false"], logPath: "/nonexistent/fail.log")
+    #expect(runner.plannedCommands == [["false"]])
+  }
+
   @Test func invalidOutputModeThrows() {
     #expect(throws: (any Error).self) {
       _ = try ValidateCommand.parse(["--output", "loud"])

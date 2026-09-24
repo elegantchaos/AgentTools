@@ -63,27 +63,47 @@ enum ValidationDiscovery {
     addPackageDir("Dependencies/Core")
 
     guard recursive else { return ordered }
+    walk(repoPath) { relativePath, file in
+      if file.lastPathComponent == "Package.swift" {
+        addPackageDir(file.deletingLastPathComponent().path)
+      }
+    }
+    return ordered
+  }
 
-    func discoverPackages(in directory: URL, relativePath relativeDirectory: String) {
+  /// Returns the repository-relative paths of the files whose contents determine discovery's results: package
+  /// manifests and resolved dependencies, Xcode workspaces and projects, and their shared and user schemes.
+  static func fingerprintFiles(repoPath: String) -> [String] {
+    var files: [String] = []
+    walk(repoPath) { relativePath, file in
+      let name = file.lastPathComponent
+      let isManifest = name == "Package.swift" || name == "Package.resolved" || (name.hasPrefix("Package@swift-") && name.hasSuffix(".swift"))
+      let isXcodeFile = name == "project.pbxproj" || name == "contents.xcworkspacedata" || name.hasSuffix(".xcscheme")
+      if isManifest || isXcodeFile {
+        files.append(relativePath)
+      }
+    }
+    return files
+  }
+
+  /// Visits every file in the repository with its repository-relative path, skipping hidden directories,
+  /// DerivedData, and test resources.
+  private static func walk(_ repoPath: String, visit: (String, URL) -> Void) {
+    func walk(_ directory: URL, relativePath: String) {
       guard let contents = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
-
       for child in contents {
-        let relativePath = relativeDirectory.isEmpty ? child.lastPathComponent : "\(relativeDirectory)/\(child.lastPathComponent)"
-        if isExcluded(relativePath) {
+        let childPath = relativePath.isEmpty ? child.lastPathComponent : "\(relativePath)/\(child.lastPathComponent)"
+        if isExcluded(childPath) || isInTestResources(childPath) {
           continue
         }
-
-        if child.lastPathComponent == "Package.swift" {
-          guard !isInTestResources(relativeDirectory) else { continue }
-          addPackageDir(directory.path)
-        } else if isDirectory(child.path) {
-          discoverPackages(in: child, relativePath: relativePath)
+        if isDirectory(child.path) {
+          walk(child, relativePath: childPath)
+        } else {
+          visit(childPath, child)
         }
       }
     }
-
-    discoverPackages(in: URL(fileURLWithPath: repoPath), relativePath: "")
-    return ordered
+    walk(URL(fileURLWithPath: repoPath), relativePath: "")
   }
 
   /// Resolves an Xcode container from an override or by searching the repository root.

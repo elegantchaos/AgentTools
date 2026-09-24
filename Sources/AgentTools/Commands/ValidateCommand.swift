@@ -21,7 +21,9 @@ struct ValidateCommand: ParsableCommand {
       Run from the repository root. Builds and tests the Xcode workspace, discovered Swift packages, or \
       Xcode project, in that order of preference. Validation never modifies source; run agt format first. \
       Build products and logs are written to .build/agt; downloads use SwiftPM's and Xcode's standard caches. \
-      Inside another sandbox, such as an agent's, SwiftPM's and Xcode's own sandboxes are turned off.
+      Inside another sandbox, such as an agent's, SwiftPM's and Xcode's own sandboxes are turned off. \
+      Discovery results, such as package descriptions and scheme destinations, are cached in .build/agt \
+      until a package manifest, Xcode project, or scheme changes.
       """
   )
 
@@ -69,6 +71,10 @@ struct ValidateCommand: ParsableCommand {
   @Flag(help: "Disable SwiftPM's internal sandbox. Validation does this automatically when it runs inside another sandbox.")
   var swiftpmDisableSandbox = false
 
+  /// Whether to list the steps instead of running them.
+  @Flag(help: "List the steps validation would run, with their commands, without running them.")
+  var plan = false
+
   /// Terminal output options.
   @OptionGroup var output: OutputOptions
 
@@ -96,7 +102,8 @@ struct ValidateCommand: ParsableCommand {
       packageDirsOverride: packageDirs.isEmpty ? nil : packageDirs,
       recursivePackageDiscovery: !noRecursivePackages,
       swiftPMDisableSandbox: swiftpmDisableSandbox,
-      outputMode: output.mode
+      outputMode: output.mode,
+      planOnly: plan
     )
   }
 

@@ -15,12 +15,14 @@ final class ValidationTool {
   private let runner: StepRunner
   /// The sandbox validation runs in, detected when validation starts.
   private var sandbox = EnclosingSandbox(isNested: false)
+  /// Discovery results saved between runs, loaded when validation starts.
+  private var cache: DiscoveryCache?
 
   /// Creates a tool that validates the repository at `repoPath`.
   init(config: ValidationConfig, repoPath: String) {
     self.config = config
     self.repoPath = repoPath
-    self.runner = StepRunner(repoPath: repoPath, outputMode: config.outputMode)
+    self.runner = StepRunner(repoPath: repoPath, outputMode: config.outputMode, planOnly: config.planOnly)
   }
 
   /// Returns a `swift` command for a package that builds into validation's private build directory.
@@ -48,6 +50,12 @@ final class ValidationTool {
     sandbox = try EnclosingSandbox.detect(using: process)
     if sandbox.isNested {
       print("Running inside another sandbox; turning off SwiftPM's and Xcode's own sandboxes.")
+    }
+    let cache = try loadCache(paths: paths)
+    self.cache = cache
+    defer {
+      try? cache.save()
+      print("Discovery: \(cache.reused) cached, \(cache.computed) looked up.")
     }
     let packages = ValidationDiscovery.packageDirectories(
       repoPath: repoPath,
@@ -231,10 +239,40 @@ final class ValidationTool {
     Self.swiftPMArguments(command, packageDir: packageDir, paths: paths, disableSandbox: config.swiftPMDisableSandbox || sandbox.isNested)
   }
 
+  /// Loads the discovery cache, keyed by the files discovery reads, the tool version, the selected Xcode, and the
+  /// options that change what discovery finds.
+  private func loadCache(paths: ValidationPaths) throws -> DiscoveryCache {
+    let developerDir = try process.capture(["xcode-select", "--print-path"]).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    let inputs = [
+      ToolVersion.current,
+      ProcessInfo.processInfo.environment["DEVELOPER_DIR"] ?? developerDir,
+      config.workspaceOverride ?? "",
+      config.projectOverride ?? "",
+      (config.packageDirsOverride ?? []).joined(separator: ","),
+      String(config.recursivePackageDiscovery),
+    ]
+    return DiscoveryCache(
+      path: "\(paths.root)/discovery.json",
+      fingerprint: DiscoveryCache.fingerprint(root: repoPath, files: ValidationDiscovery.fingerprintFiles(repoPath: repoPath), inputs: inputs)
+    )
+  }
+
+  /// Returns the cached result for `key`, or computes and caches it.
+  private func discovered<T: Codable>(_ key: String, compute: () throws -> T) throws -> T {
+    guard let cache else { return try compute() }
+    return try cache.value(key, compute: compute)
+  }
+
   /// Returns explicit destinations, or the generic destinations for the platforms a scheme supports.
   private func buildDestinations(container: [String], scheme: String, paths: ValidationPaths) throws -> [String] {
     guard config.destinations.isEmpty else { return config.destinations }
+    return try discovered("destinations \(container.joined(separator: " ")) \(scheme)") {
+      try lookUpDestinations(container: container, scheme: scheme, paths: paths)
+    }
+  }
 
+  /// Reads the generic destinations for the platforms a scheme supports from its build settings.
+  private func lookUpDestinations(container: [String], scheme: String, paths: ValidationPaths) throws -> [String] {
     let result = try process.capture(XcodeDestinations.showBuildSettingsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
     guard result.status == 0 else {
       throw ToolError("Failed to read supported platforms for scheme '\(scheme)':\n\(result.stderr)")
@@ -249,6 +287,11 @@ final class ValidationTool {
 
   /// Reads a package's targets with `swift package describe`.
   private func describePackage(_ packageDir: String, paths: ValidationPaths) throws -> SwiftPackageDescription {
+    try discovered("describe \(packageDir)") { try lookUpPackage(packageDir, paths: paths) }
+  }
+
+  /// Runs `swift package describe` for a package.
+  private func lookUpPackage(_ packageDir: String, paths: ValidationPaths) throws -> SwiftPackageDescription {
     let result = try process.capture(swiftPMCommand(["package"], packageDir: packageDir, paths: paths) + ["describe", "--type", "json"])
     guard result.status == 0 else {
       throw ToolError("Failed to describe Swift package at \(packageDir):\n\(result.stderr)")
@@ -258,10 +301,13 @@ final class ValidationTool {
 
   /// Throws when `xcodebuild -list` cannot read the workspace or project, so validation never silently skips it.
   private func checkReadable(_ container: [String]) throws {
-    let result = try process.capture(["xcodebuild", "-list"] + container + sandbox.xcodebuildDefaults)
-    guard result.status == 0 else {
-      let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
-      throw ToolError("xcodebuild cannot read \(container[1]):\n\(details)")
+    _ = try discovered("readable \(container.joined(separator: " "))") { () throws -> Bool in
+      let result = try process.capture(["xcodebuild", "-list"] + container + sandbox.xcodebuildDefaults)
+      guard result.status == 0 else {
+        let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
+        throw ToolError("xcodebuild cannot read \(container[1]):\n\(details)")
+      }
+      return true
     }
   }
 }

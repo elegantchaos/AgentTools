@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.3.0
+
+- `agt validate` caches discovery results, such as package descriptions and scheme platforms, in `.build/agt/discovery.json`, and reuses them until a package manifest, `Package.resolved`, Xcode project, workspace, or scheme changes. On a workspace with 16 packages, discovery drops from about 12 seconds to about 1.
+- Adds `agt validate --plan`, which lists the steps validation would run, with their exact commands, without running them.
+
 ## 3.2.0
 
 - Adds `agt --version`, which prints the release tag, or the full `git describe` output for a build that is not exactly a release.
