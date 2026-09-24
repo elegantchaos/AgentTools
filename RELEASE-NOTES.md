@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.5.0
+
+- Adds `agt validate --fast`, which builds only what the uncommitted changes touched, for macOS, and runs the tests that depend on it: changed package targets build with SwiftPM and run the package's test targets that depend on them, changed manifests and submodules build and test their whole package, and other build inputs build the product scheme with `xcodebuild`. `--plan` shows where each changed file was assigned.
+- `agt validate --target <name>` runs the fast phase for that target: it now runs every test target in the package that depends on it, instead of only one named `<name>Tests`.
+
 ## 3.4.3
 
 - `agt format` prints a summary when linting finds anything: the number of findings and files, and the most common rules.

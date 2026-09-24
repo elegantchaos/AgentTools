@@ -7,7 +7,9 @@
 struct ValidationConfig {
   /// Whether to remove previous validation output first.
   let clean: Bool
-  /// Optional targeted validation target.
+  /// Whether to run the fast phase for uncommitted changes instead of full validation.
+  let fast: Bool
+  /// A target to run the fast phase for, instead of the changes.
   let target: String?
   /// Explicit workspace path.
   let workspaceOverride: String?

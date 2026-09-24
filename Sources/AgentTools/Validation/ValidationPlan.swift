@@ -3,6 +3,8 @@
 //  Copyright © 2026 Elegant Chaos Limited. All rights reserved.
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+import Foundation
+
 /// What discovery found about a repository, in the form full validation needs.
 struct ValidationProject {
   /// `xcodebuild` arguments that select the root container: a workspace, a project, or none for the package in the
@@ -109,8 +111,7 @@ enum ValidationPlan {
     }
 
     func xcodebuild(_ scheme: String, _ destination: String, _ action: String) -> [String] {
-      ["xcodebuild"] + project.container + ["-scheme", scheme, "-destination", destination, "-derivedDataPath", paths.derivedDataPath]
-        + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults + (quiet ? ["-quiet"] : []) + ["CODE_SIGNING_ALLOWED=NO"] + sandbox.xcodebuildBuildSettings + [action]
+      xcodebuildArguments(container: project.container, scheme: scheme, destination: destination, action: action, paths: paths, sandbox: sandbox, quiet: quiet)
     }
 
     var steps: [PlannedStep] = []
@@ -176,10 +177,16 @@ enum ValidationPlan {
         if platform == .macOS {
           steps.append(PlannedStep(title: "Test \(package.name) on macOS", summary: summary, arguments: swift("test", package.directory), logName: logName))
         } else if let scheme = package.packageScheme {
-          let arguments =
-            ["xcodebuild", "-scheme", scheme, "-destination", destination, "-derivedDataPath", paths.packageDerivedDataPath(forPackage: package.directory)]
-            + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults + (quiet ? ["-quiet"] : []) + ["CODE_SIGNING_ALLOWED=NO"]
-            + sandbox.xcodebuildBuildSettings + ["test"]
+          let arguments = xcodebuildArguments(
+            container: [],
+            scheme: scheme,
+            destination: destination,
+            action: "test",
+            derivedDataPath: paths.packageDerivedDataPath(forPackage: package.directory),
+            paths: paths,
+            sandbox: sandbox,
+            quiet: quiet
+          )
           steps.append(
             PlannedStep(
               title: "Test \(package.name) on \(platform.rawValue)",
@@ -195,5 +202,77 @@ enum ValidationPlan {
       }
     }
     return steps
+  }
+
+  /// Returns the steps of the fast phase: whole packages, then changed targets, then the product for macOS when a
+  /// change outside every package needs it, are built; then whole packages and the affected test targets are tested.
+  /// Package steps use SwiftPM; the product builds with `xcodebuild`, and only when there is a workspace or project.
+  static func fastSteps(
+    for scope: FastScope,
+    packages: [(directory: String, description: SwiftPackageDescription)],
+    container: [String],
+    productSchemes: [String],
+    paths: ValidationPaths,
+    sandbox: EnclosingSandbox,
+    disableSwiftPMSandbox: Bool,
+    quiet: Bool
+  ) -> [PlannedStep] {
+    func swift(_ command: String, _ packageDir: String, _ extra: [String] = []) -> [String] {
+      ValidationTool.swiftPMArguments([command], packageDir: packageDir, paths: paths, disableSandbox: disableSwiftPMSandbox) + extra
+    }
+    func description(_ directory: String) -> SwiftPackageDescription? {
+      packages.first { $0.directory == directory }?.description
+    }
+    func step(_ summary: String, _ arguments: [String], _ logName: String) -> PlannedStep {
+      PlannedStep(title: summary.prefix(1).uppercased() + summary.dropFirst(), summary: summary, arguments: arguments, logName: "fast_\(logName)")
+    }
+
+    var steps: [PlannedStep] = []
+    for directory in scope.wholePackages {
+      let name = description(directory)?.name ?? URL(fileURLWithPath: directory).lastPathComponent
+      steps.append(step("build \(name) package", swift("build", directory), "build_package_\(directory)"))
+    }
+    for target in scope.builds {
+      steps.append(step("build \(target.name)", swift("build", target.packageDirectory, ["--target", target.name]), "build_\(target.name)_\(target.packageDirectory)"))
+    }
+    if !scope.productSources.isEmpty, !container.isEmpty {
+      for scheme in productSchemes {
+        let arguments = xcodebuildArguments(
+          container: container,
+          scheme: scheme,
+          destination: ApplePlatform.macOS.buildDestination,
+          action: "build",
+          paths: paths,
+          sandbox: sandbox,
+          quiet: quiet
+        )
+        steps.append(step("build \(scheme) (macOS)", arguments, "build_\(scheme)_macOS"))
+      }
+    }
+    for directory in scope.wholePackages where description(directory)?.hasTestTargets ?? false {
+      let name = description(directory)?.name ?? URL(fileURLWithPath: directory).lastPathComponent
+      steps.append(step("test \(name) package", swift("test", directory), "test_package_\(directory)"))
+    }
+    for target in scope.tests {
+      steps.append(step("test \(target.name)", swift("test", target.packageDirectory, ["--filter", target.name]), "test_\(target.name)_\(target.packageDirectory)"))
+    }
+    return steps
+  }
+
+  /// Returns the `xcodebuild` arguments for one scheme, destination, and action, in validation's build directory unless
+  /// `derivedDataPath` names another.
+  static func xcodebuildArguments(
+    container: [String],
+    scheme: String,
+    destination: String,
+    action: String,
+    derivedDataPath: String? = nil,
+    paths: ValidationPaths,
+    sandbox: EnclosingSandbox,
+    quiet: Bool
+  ) -> [String] {
+    ["xcodebuild"] + container + ["-scheme", scheme, "-destination", destination, "-derivedDataPath", derivedDataPath ?? paths.derivedDataPath]
+      + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults + (quiet ? ["-quiet"] : []) + ["CODE_SIGNING_ALLOWED=NO"]
+      + sandbox.xcodebuildBuildSettings + [action]
   }
 }

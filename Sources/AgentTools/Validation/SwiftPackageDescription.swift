@@ -27,6 +27,14 @@ struct SwiftPackageDescription: Codable {
     let type: String
     /// The target's source directory, relative to the package.
     var path: String?
+    /// Targets in the same package that this target depends on.
+    var targetDependencies: [String]?
+
+    /// Keys in `swift package describe` output.
+    private enum CodingKeys: String, CodingKey {
+      case name, type, path
+      case targetDependencies = "target_dependencies"
+    }
   }
 
   /// The package name.

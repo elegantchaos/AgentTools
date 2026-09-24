@@ -71,12 +71,12 @@ final class ValidationTool {
     let workspace = ValidationDiscovery.workspace(override: config.workspaceOverride, repoPath: repoPath)
     let project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
 
-    if let target = config.target {
-      try runTargeted(target: target, paths: paths, packages: packageDirs, workspace: workspace, project: project)
+    let container = workspace.map { ["-workspace", $0] } ?? project.map { ["-project", $0] } ?? []
+    if config.fast || config.target != nil {
+      try runFast(container: container, packageDirs: packageDirs, paths: paths)
       return
     }
 
-    let container = workspace.map { ["-workspace", $0] } ?? project.map { ["-project", $0] } ?? []
     let discovered = try discoverProject(container: container, packageDirs: packageDirs, paths: paths)
     if config.planOnly {
       print("== Packages")
@@ -251,95 +251,92 @@ final class ValidationTool {
     return wanted
   }
 
+  /// Returns the repository-relative paths of uncommitted changes, including untracked files and changed submodules.
+  private func changedPaths() throws -> [String] {
+    let result = try process.capture(["git", "status", "--porcelain", "-z", "--untracked-files=all"])
+    guard result.status == 0 else {
+      throw ToolError("Failed to read git status:\n\(result.stderr)")
+    }
+    return SubmoduleStatus.changedPaths(fromPorcelainZ: result.stdout)
+  }
+
   /// Returns the repository-relative paths of submodules that differ from the commits the repository records, when
   /// the submodule policy needs them.
   private func changedSubmodulePaths() throws -> Set<String> {
     guard config.testSubmodules == .changed else { return [] }
-    let result = try process.capture(["git", "status", "--porcelain"])
-    guard result.status == 0 else {
-      throw ToolError("Failed to read git status:\n\(result.stderr)")
-    }
-    return Set(SubmoduleStatus.changedPaths(fromPorcelain: result.stdout))
+    return Set(try changedPaths())
   }
 
-  /// Builds a modified non-test SwiftPM target before running its conventionally named test target, if present.
-  ///
-  /// When no discovered package defines the target, builds an Xcode scheme of that name instead.
-  private func runTargeted(target: String, paths: ValidationPaths, packages: [String], workspace: String?, project: String?) throws {
-    var inspectionErrors: [String] = []
-
-    for packageDir in packages {
-      let package: SwiftPackageDescription
-      do {
-        package = try describePackage(packageDir, paths: paths)
-      } catch {
-        inspectionErrors.append("\(error)")
-        continue
+  /// Runs the fast phase: builds what the uncommitted changes, or the named target, touched, and runs the tests that
+  /// depend on it.
+  private func runFast(container: [String], packageDirs: [String], paths: ValidationPaths) throws {
+    let scope: FastScope
+    var packages: [(directory: String, description: SwiftPackageDescription)] = []
+    if let target = config.target {
+      for packageDir in packageDirs {
+        if let description = try? describePackage(packageDir, paths: paths) {
+          packages.append((packageDir, description))
+        }
       }
-      guard package.hasTarget(named: target) else { continue }
-
-      try runner.run(
-        title: "Build Swift target \(target)",
-        summary: "swift build \(target)",
-        arguments: swiftPMCommand(["build"], packageDir: packageDir, paths: paths) + ["--target", target],
-        logPath: paths.logPath("swift_build_target_\(target)_\(packageDir)")
-      )
-
-      let candidates = target.hasSuffix("Tests") ? [target] : [target, "\(target)Tests"]
-      if let testTarget = candidates.first(where: { package.hasTarget(named: $0, type: "test") }) {
-        try runner.run(
-          title: "Test Swift target \(testTarget)",
-          summary: "swift test \(testTarget)",
-          arguments: swiftPMCommand(["test"], packageDir: packageDir, paths: paths) + ["--filter", testTarget],
-          logPath: paths.logPath("swift_test_target_\(testTarget)_\(packageDir)")
-        )
-      } else {
-        runner.record("swift test \(target) (no matching test target)", status: .skip)
+      scope = FastScope(targets: [target], packages: packages)
+    } else {
+      let changed = try changedPaths()
+      let repo = ValidationPaths.canonical(repoPath)
+      for packageDir in packageDirs {
+        let path = ValidationPaths.canonical(packageDir)
+        let relative = path == repo ? "" : path.hasPrefix("\(repo)/") ? String(path.dropFirst(repo.count + 1)) : path
+        let touched = changed.contains { relative.isEmpty || $0 == relative || $0.hasPrefix("\(relative)/") || relative.hasPrefix("\($0)/") }
+        if touched {
+          packages.append((packageDir, try describePackage(packageDir, paths: paths)))
+        }
       }
+      scope = FastScope(changedFiles: changed, packages: packages, repoPath: repoPath)
+    }
+
+    if config.planOnly, !scope.assignments.isEmpty {
+      print("== Changes")
+      for assignment in scope.assignments {
+        print(assignment)
+      }
+      print("== Steps")
+    }
+    guard !scope.isEmpty else {
+      print(scope.assignments.isEmpty ? "No changes to validate." : "Nothing to build or test for these changes.")
       return
     }
 
-    let fallback: (container: [String], kind: String)?
-    if let workspace {
-      fallback = (["-workspace", workspace], "workspace")
-    } else if let project {
-      fallback = (["-project", project], "project")
-    } else {
-      fallback = nil
-    }
-
-    guard let fallback else {
-      if !inspectionErrors.isEmpty {
+    let schemes = scope.productSources.isEmpty && scope.unmatchedTargets.isEmpty || container.isEmpty ? [] : try listSchemes(container)
+    let productSchemes = scope.productSources.isEmpty || container.isEmpty ? [] : try self.productSchemes(container: container, schemes: schemes, rootPackage: nil)
+    var steps = ValidationPlan.fastSteps(
+      for: scope,
+      packages: packages,
+      container: container,
+      productSchemes: productSchemes,
+      paths: paths,
+      sandbox: sandbox,
+      disableSwiftPMSandbox: config.swiftPMDisableSandbox || sandbox.isNested,
+      quiet: config.outputMode != .raw
+    )
+    for name in scope.unmatchedTargets {
+      guard !container.isEmpty, schemes.contains(name) else {
         throw ToolError(
-          """
-          Could not inspect SwiftPM packages while resolving target '\(target)'.
-          \(inspectionErrors.joined(separator: "\n\n"))
-          Provide --package-dirs to narrow package discovery, or ensure SwiftPM commands can run in this environment.
-          """
+          "Target '\(name)' was not found in the repository's Swift packages, and there is no Xcode scheme of that name. Provide --package-dirs, --workspace, or --project."
         )
       }
-      throw ToolError(
-        "Target '\(target)' was not found in discovered Swift packages, and no Xcode workspace/project is available for scheme fallback. Provide --package-dirs, --workspace, or --project."
+      let arguments = ValidationPlan.xcodebuildArguments(
+        container: container,
+        scheme: name,
+        destination: ApplePlatform.macOS.buildDestination,
+        action: "build",
+        paths: paths,
+        sandbox: sandbox,
+        quiet: config.outputMode != .raw
       )
+      steps.append(PlannedStep(title: "Build \(name) for macOS", summary: "build \(name) (macOS)", arguments: arguments, logName: "fast_build_\(name)_macOS"))
     }
-
-    if !inspectionErrors.isEmpty {
-      print("SwiftPM target inspection failed; continuing with Xcode \(fallback.kind) fallback.")
+    for step in steps {
+      try runner.run(title: step.title, summary: step.summary, arguments: step.arguments, workingDirectory: step.workingDirectory, logPath: paths.logPath(step.logName))
     }
-
-    let destination = ApplePlatform.macOS.buildDestination
-    var args =
-      ["xcodebuild"] + fallback.container + ["-scheme", target, "-destination", destination, "-derivedDataPath", paths.derivedDataPath]
-      + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults
-    if config.outputMode != .raw {
-      args.append("-quiet")
-    }
-    try runner.run(
-      title: "Build \(fallback.kind) scheme \(target) for \(destination)",
-      summary: "build \(target) (\(destination))",
-      arguments: args + ["CODE_SIGNING_ALLOWED=NO"] + sandbox.xcodebuildBuildSettings + ["build"],
-      logPath: paths.logPath("\(fallback.kind)_target_build_\(target)")
-    )
   }
 
   /// Returns a `swift` command for a package, turning off SwiftPM's sandbox when requested or already sandboxed.

@@ -7,11 +7,19 @@ import Foundation
 
 /// Finds which packages live in git submodules, and which submodules have changed.
 enum SubmoduleStatus {
-  /// Returns the paths reported by `git status --porcelain`, including submodules with new commits or local changes.
-  static func changedPaths(fromPorcelain output: String) -> [String] {
-    output.split(separator: "\n").compactMap { line in
-      line.count > 3 ? String(line.dropFirst(3)) : nil
+  /// Returns the paths reported by `git status --porcelain -z`, including submodules with new commits or local
+  /// changes, and the new path of a rename or copy.
+  static func changedPaths(fromPorcelainZ output: String) -> [String] {
+    var paths: [String] = []
+    var entries = output.split(separator: "\0", omittingEmptySubsequences: true).makeIterator()
+    while let entry = entries.next() {
+      guard entry.count > 3 else { continue }
+      paths.append(String(entry.dropFirst(3)))
+      if entry.first == "R" || entry.first == "C" {
+        _ = entries.next()
+      }
     }
+    return paths
   }
 
   /// Returns the repository-relative path of the nearest nested git repository containing `directory`, or `nil`

@@ -8,10 +8,10 @@ import Foundation
 
 /// Runs the standard validation flow for the Swift repository in the current directory.
 ///
-/// Targeted validation is a fast preflight for a modified non-test SwiftPM
-/// target. It builds that target first, then runs a conventionally named
-/// `<Target>Tests` target when one exists. Use comprehensive validation to
-/// verify the complete app or package and its dependencies.
+/// Full validation builds every product scheme for every supported platform,
+/// then runs the tests of the product and its local packages. The fast phase
+/// (`--fast`, or `--target`) builds only what a change touched, for macOS, and
+/// runs the tests that depend on it.
 struct ValidateCommand: AsyncParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
@@ -27,8 +27,12 @@ struct ValidateCommand: AsyncParsableCommand {
       """
   )
 
-  /// Target for fast preflight validation.
-  @Option(help: "Build this non-test SwiftPM target, then run <target>Tests when present.")
+  /// Whether to run the fast phase for uncommitted changes.
+  @Flag(help: "Build only what the uncommitted changes touched, for macOS, and run the tests that depend on it.")
+  var fast = false
+
+  /// Target for the fast phase.
+  @Option(help: "Run the fast phase for this target instead of the changes: build it and run the test targets that depend on it, or build the Xcode scheme of this name when no package defines it.")
   var target: String?
 
   /// Whether to clear previous validation output.
@@ -94,6 +98,7 @@ struct ValidateCommand: AsyncParsableCommand {
 
     return ValidationConfig(
       clean: clean,
+      fast: fast,
       target: target,
       workspaceOverride: workspace,
       projectOverride: project,

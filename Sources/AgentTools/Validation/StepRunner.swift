@@ -85,7 +85,7 @@ final class StepRunner {
   /// Prints every recorded step, with log paths for failures, or the number of planned steps.
   func printSummary() {
     if planOnly {
-      print("== Plan: \(plannedCommands.count) steps")
+      print("== Plan: \(plannedCommands.count) step\(plannedCommands.count == 1 ? "" : "s")")
       return
     }
     guard !steps.isEmpty else { return }

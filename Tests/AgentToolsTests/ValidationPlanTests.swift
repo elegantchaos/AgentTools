@@ -78,8 +78,8 @@ struct ValidationPlanTests {
   }
 
   @Test func changedSubmodulesComeFromGitStatus() {
-    let status = " M Dependencies/Logger\n?? Notes.txt\nM  Sources/App.swift\n M Dependencies/Commands\n"
-    #expect(SubmoduleStatus.changedPaths(fromPorcelain: status) == ["Dependencies/Logger", "Notes.txt", "Sources/App.swift", "Dependencies/Commands"])
+    let status = " M Dependencies/Logger\0?? Notes.txt\0M  Sources/App.swift\0 M Dependencies/Commands\0"
+    #expect(SubmoduleStatus.changedPaths(fromPorcelainZ: status) == ["Dependencies/Logger", "Notes.txt", "Sources/App.swift", "Dependencies/Commands"])
   }
 
   @Test func enclosingSubmoduleIsTheNearestNestedRepository() throws {

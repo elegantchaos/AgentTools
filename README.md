@@ -85,13 +85,25 @@ agt validate
 
 `agt format` formats every tracked and untracked Swift file in place with `swift format`, then lints them and reports any findings without failing. Swift files inside a `Resources` directory under `Tests` are treated as fixtures and skipped; other files can opt out with a `// swift-format-ignore-file` comment, and whole files or directories with `format.exclude` in the project configuration. When linting finds anything, a summary line counts the findings, the files, and the most common rules; the full list is in the lint log. `agt format --check` modifies nothing and fails on any finding.
 
-Run the fast check for a module you have changed:
+Check a change quickly with the fast phase, then run full validation:
 
 ```shell
-agt validate --target <name>
+agt validate --fast
+agt validate
 ```
 
-When the fast check passes, run full validation.
+#### What the fast phase covers
+
+The fast phase finds the smallest scope that covers the uncommitted changes, including untracked files, builds it for macOS, and runs the tests that depend on it:
+
+- A changed file in a Swift package target builds that target with SwiftPM, and runs the package's test targets that depend on it. A changed test file runs its test target.
+- A changed `Package.swift`, `Package.resolved`, or git submodule builds and tests its whole package.
+- A build input outside every package target, such as an app source file, a resource, or an Xcode project file, builds the product scheme for macOS with `xcodebuild`.
+- Anything else, such as documentation, is ignored. With no relevant changes, nothing runs.
+
+`agt validate --target <name>` runs the fast phase for a named target instead of the changes, or builds the Xcode scheme of that name for macOS when no package defines the target.
+
+`agt validate --fast --plan` shows where each changed file was assigned, and the steps.
 
 #### What full validation covers
 
