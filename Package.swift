@@ -12,13 +12,15 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.7.0"),
+    .package(url: "https://github.com/apple/swift-configuration", from: "1.2.0"),
     .package(url: "https://github.com/elegantchaos/Versionator.git", from: "2.1.1"),
   ],
   targets: [
     .executableTarget(
       name: "AgentTools",
       dependencies: [
-        .product(name: "ArgumentParser", package: "swift-argument-parser")
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        .product(name: "Configuration", package: "swift-configuration"),
       ],
       plugins: [
         .plugin(name: "VersionatorPlugin", package: "Versionator")

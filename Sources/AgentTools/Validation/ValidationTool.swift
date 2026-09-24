@@ -6,6 +6,9 @@
 import Foundation
 
 /// Runs build and test steps for a Swift repository and reports a PASS/FAIL/SKIP summary.
+///
+/// Full validation discovers the repository's product and local packages, plans the builds and tests with
+/// `ValidationPlan`, and runs the plan. Targeted validation builds and tests a single SwiftPM target.
 final class ValidationTool {
   /// Validation settings.
   private let config: ValidationConfig
@@ -38,8 +41,10 @@ final class ValidationTool {
   /// Subprocess runner rooted at the repository.
   private var process: ValidationProcess { runner.process }
 
-  /// Runs targeted or comprehensive validation, printing the summary whether or not it succeeds.
+  /// Runs targeted or full validation, printing the summary whether or not it succeeds.
   func run() throws {
+    // Line-buffer output, so progress and errors appear in order and promptly when output goes to a pipe or file.
+    setvbuf(stdout, nil, _IOLBF, 0)
     guard FileManager.default.fileExists(atPath: "\(repoPath)/.git") else {
       throw ToolError("Current working directory is not a git repo root: \(repoPath)")
     }
@@ -57,103 +62,165 @@ final class ValidationTool {
       try? cache.save()
       print("Discovery: \(cache.reused) cached, \(cache.computed) looked up.")
     }
-    let packages = ValidationDiscovery.packageDirectories(
+
+    let packageDirs = ValidationDiscovery.packageDirectories(
       repoPath: repoPath,
       overrides: config.packageDirsOverride,
       recursive: config.recursivePackageDiscovery
     )
-
     let workspace = ValidationDiscovery.workspace(override: config.workspaceOverride, repoPath: repoPath)
-    if let workspace {
-      try checkReadable(["-workspace", workspace])
-    }
-
     let project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
-    if let project {
-      try checkReadable(["-project", project])
-    }
 
     if let target = config.target {
-      try runTargeted(target: target, paths: paths, packages: packages, workspace: workspace, project: project)
+      try runTargeted(target: target, paths: paths, packages: packageDirs, workspace: workspace, project: project)
       return
     }
 
-    if let workspace {
-      try runXcodeBroad(container: ["-workspace", workspace], kind: "workspace", logPrefix: "comprehensive", paths: paths)
-    } else if !packages.isEmpty {
-      print("No workspace detected. Running SwiftPM broad validation across discovered packages.")
-      try runSwiftPMBroad(packages: packages, paths: paths)
-    } else if let project {
-      try runXcodeBroad(container: ["-project", project], kind: "project", logPrefix: "project", paths: paths)
-    } else {
-      throw ToolError("No workspace/project or Swift packages detected for broad validation in \(repoPath).")
-    }
-  }
-
-  /// Builds every scheme for its destinations, then optionally tests workspace schemes.
-  private func runXcodeBroad(container: [String], kind: String, logPrefix: String, paths: ValidationPaths) throws {
-    let isWorkspace = kind == "workspace"
-    let actions = isWorkspace && config.clean ? ["clean", "build"] : ["build"]
-
-    for scheme in config.schemes {
-      for destination in try buildDestinations(container: container, scheme: scheme, paths: paths) {
-        try runner.run(
-          title: "Build \(kind) scheme \(scheme) for \(destination)",
-          summary: "build \(scheme) (\(destination))",
-          arguments: xcodebuildArguments(container: container, scheme: scheme, destination: destination, paths: paths, actions: actions),
-          logPath: paths.logPath("\(logPrefix)_\(scheme)_\(destination)_build")
-        )
-      }
-    }
-
-    guard isWorkspace, config.runXcodeTests else { return }
-
-    for scheme in config.schemes {
-      for destination in config.testDestinations {
-        try runner.run(
-          title: "Test workspace scheme \(scheme) for \(destination)",
-          summary: "test \(scheme) (\(destination))",
-          arguments: xcodebuildArguments(container: container, scheme: scheme, destination: destination, paths: paths, actions: ["test"]),
-          logPath: paths.logPath("\(logPrefix)_\(scheme)_\(destination)_test")
-        )
+    let container = workspace.map { ["-workspace", $0] } ?? project.map { ["-project", $0] } ?? []
+    let discovered = try discoverProject(container: container, packageDirs: packageDirs, paths: paths)
+    let steps = ValidationPlan.steps(
+      for: discovered,
+      testSubmodules: config.testSubmodules,
+      excludedPackages: config.excludedPackages,
+      paths: paths,
+      sandbox: sandbox,
+      disableSwiftPMSandbox: config.swiftPMDisableSandbox || sandbox.isNested,
+      quiet: config.outputMode != .raw
+    )
+    for step in steps {
+      if step.skipped {
+        runner.record(step.summary, status: .skip)
+      } else {
+        try runner.run(title: step.title, summary: step.summary, arguments: step.arguments, logPath: paths.logPath(step.logName))
       }
     }
   }
 
-  /// Builds and tests each discovered Swift package.
-  private func runSwiftPMBroad(packages: [String], paths: ValidationPaths) throws {
-    for packageDir in packages {
-      let package: SwiftPackageDescription
-      do {
-        package = try describePackage(packageDir, paths: paths)
-      } catch {
-        throw ToolError("Could not inspect Swift package at \(packageDir) before validation.\n\(error)")
-      }
+  /// Discovers the product schemes, their platforms and tests, and the local packages of the root container.
+  private func discoverProject(container: [String], packageDirs: [String], paths: ValidationPaths) throws -> ValidationProject {
+    guard !container.isEmpty || FileManager.default.fileExists(atPath: "\(repoPath)/Package.swift") else {
+      throw ToolError("No Xcode workspace or project, and no Package.swift, in \(repoPath).")
+    }
 
-      try runner.run(
-        title: "Build Swift package \(packageDir)",
-        summary: "swift build \(packageDir)",
-        arguments: swiftPMCommand(["build"], packageDir: packageDir, paths: paths),
-        logPath: paths.logPath("swift_build_\(packageDir)")
-      )
-
-      guard package.hasTestTargets else {
-        runner.record("swift test \(packageDir) (no test targets)", status: .skip)
+    let schemes = try listSchemes(container)
+    let changedSubmodules = try changedSubmodulePaths()
+    var packages: [LocalPackage] = []
+    var rootPackage: SwiftPackageDescription?
+    for packageDir in packageDirs {
+      let submodule = SubmoduleStatus.enclosingSubmodule(of: packageDir, repoPath: repoPath)
+      let submoduleChanged = submodule.map(changedSubmodules.contains) ?? false
+      if submodule != nil, config.testSubmodules == .never || (config.testSubmodules == .changed && !submoduleChanged) {
         continue
       }
 
-      try runner.run(
-        title: "Test Swift package \(packageDir)",
-        summary: "swift test \(packageDir)",
-        arguments: swiftPMCommand(["test"], packageDir: packageDir, paths: paths),
-        logPath: paths.logPath("swift_test_\(packageDir)")
+      let description: SwiftPackageDescription
+      do {
+        description = try describePackage(packageDir, paths: paths)
+      } catch {
+        let reason = "\(error)".split(separator: "\n").dropFirst().first.map(String.init) ?? "\(error)"
+        runner.record("test \(relativePath(packageDir)) (cannot describe package: \(reason.trimmingCharacters(in: .whitespaces)))", status: .skip)
+        continue
+      }
+      if submodule == nil, relativePath(packageDir).isEmpty {
+        rootPackage = description
+      }
+      packages.append(
+        LocalPackage(
+          directory: packageDir,
+          name: description.name,
+          hasTests: description.hasTestTargets,
+          scheme: LocalPackage.scheme(for: description, in: schemes),
+          submodule: submodule,
+          submoduleChanged: submoduleChanged
+        )
       )
     }
+
+    let productSchemes = try self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
+    let schemeFiles = ValidationDiscovery.fingerprintFiles(repoPath: repoPath).filter { $0.hasSuffix(".xcscheme") }
+    let schemesWithTests = Set(
+      productSchemes.filter { scheme in
+        guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }),
+          let contents = try? String(contentsOfFile: "\(repoPath)/\(file)", encoding: .utf8)
+        else { return false }
+        return XcodeSchemes.hasTests(schemeFile: contents)
+      }
+    )
+
+    let buildPlatforms: [ApplePlatform]
+    if !config.platforms.isEmpty {
+      buildPlatforms = config.platforms
+    } else if container.isEmpty {
+      buildPlatforms = [.macOS]
+    } else {
+      var platforms: [ApplePlatform] = []
+      for scheme in productSchemes {
+        for platform in try supportedPlatforms(container: container, scheme: scheme, paths: paths) where !platforms.contains(platform) {
+          platforms.append(platform)
+        }
+      }
+      buildPlatforms = platforms
+    }
+    let testPlatforms = config.testPlatforms.isEmpty ? buildPlatforms : config.testPlatforms
+    let needsSimulators = testPlatforms.contains { $0 != .macOS }
+    let testDestinations = try needsSimulators ? self.testDestinations(container: container, scheme: productSchemes[0], platforms: testPlatforms, paths: paths) : [.macOS: "platform=macOS"]
+
+    return ValidationProject(
+      container: container,
+      productSchemes: productSchemes,
+      schemesWithTests: schemesWithTests,
+      buildPlatforms: buildPlatforms,
+      testPlatforms: testPlatforms,
+      testDestinations: testDestinations,
+      packages: packages
+    )
+  }
+
+  /// Returns a directory's path relative to the repository, or an empty string for the repository itself.
+  private func relativePath(_ directory: String) -> String {
+    let repo = URL(fileURLWithPath: repoPath).standardizedFileURL.path
+    let path = URL(fileURLWithPath: directory).standardizedFileURL.path
+    return path == repo ? "" : path.hasPrefix("\(repo)/") ? String(path.dropFirst(repo.count + 1)) : path
+  }
+
+  /// Returns the configured product schemes, or by default the scheme named after the repository for an Xcode
+  /// container, or the root package's scheme.
+  private func productSchemes(container: [String], schemes: [String], rootPackage: SwiftPackageDescription?) throws -> [String] {
+    let wanted: [String]
+    if !config.schemes.isEmpty {
+      wanted = config.schemes
+    } else if !container.isEmpty {
+      wanted = [ValidationDiscovery.repoName(repoPath)]
+    } else if let rootPackage, let scheme = LocalPackage.scheme(for: rootPackage, in: schemes) {
+      wanted = [scheme]
+    } else {
+      wanted = []
+    }
+
+    let missing = wanted.filter { !schemes.contains($0) }
+    guard !wanted.isEmpty, missing.isEmpty else {
+      let names = missing.isEmpty ? "No product scheme was found" : "No scheme named \(missing.joined(separator: ", "))"
+      throw ToolError(
+        "\(names). Set validate.schemes in .agt/config.json, or pass --schemes. Available schemes: \(schemes.joined(separator: ", "))."
+      )
+    }
+    return wanted
+  }
+
+  /// Returns the repository-relative paths of submodules that differ from the commits the repository records, when
+  /// the submodule policy needs them.
+  private func changedSubmodulePaths() throws -> Set<String> {
+    guard config.testSubmodules == .changed else { return [] }
+    let result = try process.capture(["git", "status", "--porcelain"])
+    guard result.status == 0 else {
+      throw ToolError("Failed to read git status:\n\(result.stderr)")
+    }
+    return Set(SubmoduleStatus.changedPaths(fromPorcelain: result.stdout))
   }
 
   /// Builds a modified non-test SwiftPM target before running its conventionally named test target, if present.
   ///
-  /// When no discovered package defines the target, builds an Xcode scheme of the same name instead.
+  /// When no discovered package defines the target, builds an Xcode scheme of that name instead.
   private func runTargeted(target: String, paths: ValidationPaths, packages: [String], workspace: String?, project: String?) throws {
     var inspectionErrors: [String] = []
 
@@ -216,22 +283,19 @@ final class ValidationTool {
       print("SwiftPM target inspection failed; continuing with Xcode \(fallback.kind) fallback.")
     }
 
-    let destination = "generic/platform=macOS"
-    try runner.run(
-      title: "Build \(fallback.kind) scheme \(target) for \(destination)",
-      summary: "build \(target) (\(destination))",
-      arguments: xcodebuildArguments(container: fallback.container, scheme: target, destination: destination, paths: paths, actions: ["build"]),
-      logPath: paths.logPath("\(fallback.kind)_target_build_\(target)")
-    )
-  }
-
-  /// Returns the `xcodebuild` arguments for one scheme, destination, and set of actions.
-  private func xcodebuildArguments(container: [String], scheme: String, destination: String, paths: ValidationPaths, actions: [String]) -> [String] {
-    var args = ["xcodebuild"] + container + ["-scheme", scheme, "-destination", destination, "-derivedDataPath", paths.derivedDataPath] + sandbox.xcodebuildDefaults
+    let destination = ApplePlatform.macOS.buildDestination
+    var args =
+      ["xcodebuild"] + fallback.container + ["-scheme", target, "-destination", destination, "-derivedDataPath", paths.derivedDataPath]
+      + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults
     if config.outputMode != .raw {
       args.append("-quiet")
     }
-    return args + ["CODE_SIGNING_ALLOWED=NO"] + sandbox.xcodebuildBuildSettings + actions
+    try runner.run(
+      title: "Build \(fallback.kind) scheme \(target) for \(destination)",
+      summary: "build \(target) (\(destination))",
+      arguments: args + ["CODE_SIGNING_ALLOWED=NO"] + sandbox.xcodebuildBuildSettings + ["build"],
+      logPath: paths.logPath("\(fallback.kind)_target_build_\(target)")
+    )
   }
 
   /// Returns a `swift` command for a package, turning off SwiftPM's sandbox when requested or already sandboxed.
@@ -257,57 +321,66 @@ final class ValidationTool {
     )
   }
 
-  /// Returns the cached result for `key`, or computes and caches it.
-  private func discovered<T: Codable>(_ key: String, compute: () throws -> T) throws -> T {
+  /// Returns the cached result for `key`, or computes it, caching it only when `isComplete` accepts it.
+  private func discovered<T: Codable>(_ key: String, isComplete: (T) -> Bool = { _ in true }, compute: () throws -> T) throws -> T {
     guard let cache else { return try compute() }
-    return try cache.value(key, compute: compute)
+    return try cache.value(key, isComplete: isComplete, compute: compute)
   }
 
-  /// Returns explicit destinations, or the generic destinations for the platforms a scheme supports.
-  private func buildDestinations(container: [String], scheme: String, paths: ValidationPaths) throws -> [String] {
-    guard config.destinations.isEmpty else { return config.destinations }
-    return try discovered("destinations \(container.joined(separator: " ")) \(scheme)") {
-      try lookUpDestinations(container: container, scheme: scheme, paths: paths)
-    }
-  }
-
-  /// Reads the generic destinations for the platforms a scheme supports from its build settings.
-  private func lookUpDestinations(container: [String], scheme: String, paths: ValidationPaths) throws -> [String] {
-    let result = try process.capture(XcodeDestinations.showBuildSettingsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
-    guard result.status == 0 else {
-      throw ToolError("Failed to read supported platforms for scheme '\(scheme)':\n\(result.stderr)")
-    }
-
-    let destinations = try XcodeDestinations.destinations(fromBuildSettingsJSON: result.stdout)
-    guard !destinations.isEmpty else {
-      throw ToolError("No supported build destinations found for scheme '\(scheme)'. Provide --destinations to override platform detection.")
-    }
-    return destinations
-  }
-
-  /// Reads a package's targets with `swift package describe`.
-  private func describePackage(_ packageDir: String, paths: ValidationPaths) throws -> SwiftPackageDescription {
-    try discovered("describe \(packageDir)") { try lookUpPackage(packageDir, paths: paths) }
-  }
-
-  /// Runs `swift package describe` for a package.
-  private func lookUpPackage(_ packageDir: String, paths: ValidationPaths) throws -> SwiftPackageDescription {
-    let result = try process.capture(swiftPMCommand(["package"], packageDir: packageDir, paths: paths) + ["describe", "--type", "json"])
-    guard result.status == 0 else {
-      throw ToolError("Failed to describe Swift package at \(packageDir):\n\(result.stderr)")
-    }
-    return try JSONDecoder().decode(SwiftPackageDescription.self, from: Data(result.stdout.utf8))
-  }
-
-  /// Throws when `xcodebuild -list` cannot read the workspace or project, so validation never silently skips it.
-  private func checkReadable(_ container: [String]) throws {
-    _ = try discovered("readable \(container.joined(separator: " "))") { () throws -> Bool in
-      let result = try process.capture(["xcodebuild", "-list"] + container + sandbox.xcodebuildDefaults)
+  /// Returns the schemes of the root container, failing when `xcodebuild` cannot read it, so validation never skips it.
+  private func listSchemes(_ container: [String]) throws -> [String] {
+    try discovered("schemes \(container.joined(separator: " "))") {
+      let result = try process.capture(["xcodebuild", "-list", "-json"] + container + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults)
       guard result.status == 0 else {
         let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
-        throw ToolError("xcodebuild cannot read \(container[1]):\n\(details)")
+        throw ToolError("xcodebuild cannot read \(container.last ?? repoPath):\n\(details)")
       }
-      return true
+      return try XcodeSchemes.schemes(fromListJSON: result.stdout)
+    }
+  }
+
+  /// Returns the platforms a scheme supports, from its build settings.
+  private func supportedPlatforms(container: [String], scheme: String, paths: ValidationPaths) throws -> [ApplePlatform] {
+    try discovered("platforms \(container.joined(separator: " ")) \(scheme)") {
+      let result = try process.capture(XcodeDestinations.showBuildSettingsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
+      guard result.status == 0 else {
+        throw ToolError("Failed to read supported platforms for scheme '\(scheme)':\n\(result.stderr)")
+      }
+      let platforms = try XcodeDestinations.platforms(fromBuildSettingsJSON: result.stdout)
+      guard !platforms.isEmpty else {
+        throw ToolError("No supported platforms found for scheme '\(scheme)'. Set validate.platforms in .agt/config.json, or pass --platforms.")
+      }
+      return platforms
+    }
+  }
+
+  /// Returns a test destination for each platform, choosing simulators from those available to a scheme.
+  ///
+  /// Xcode can list destinations before it has loaded its simulators, so a list missing any of `platforms` is retried
+  /// once and never cached.
+  private func testDestinations(container: [String], scheme: String, platforms: [ApplePlatform], paths: ValidationPaths) throws -> [ApplePlatform: String] {
+    let isComplete = { (destinations: [ApplePlatform: String]) in platforms.allSatisfy { destinations[$0] != nil } }
+    return try discovered("testDestinations \(container.joined(separator: " ")) \(scheme)", isComplete: isComplete) {
+      var destinations: [ApplePlatform: String] = [:]
+      for _ in 1...2 where !isComplete(destinations) {
+        let result = try process.capture(XcodeDestinations.showDestinationsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
+        guard result.status == 0 else {
+          throw ToolError("Failed to list destinations for scheme '\(scheme)':\n\(result.stderr)")
+        }
+        destinations = XcodeDestinations.testDestinations(fromShowDestinations: result.stdout)
+      }
+      return destinations
+    }
+  }
+
+  /// Reads a package's targets and products with `swift package describe`.
+  private func describePackage(_ packageDir: String, paths: ValidationPaths) throws -> SwiftPackageDescription {
+    try discovered("describe \(packageDir)") {
+      let result = try process.capture(swiftPMCommand(["package"], packageDir: packageDir, paths: paths) + ["describe", "--type", "json"])
+      guard result.status == 0 else {
+        throw ToolError("Failed to describe Swift package at \(packageDir):\n\(result.stderr)")
+      }
+      return try JSONDecoder().decode(SwiftPackageDescription.self, from: Data(result.stdout.utf8))
     }
   }
 }

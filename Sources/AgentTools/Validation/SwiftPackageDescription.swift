@@ -5,6 +5,12 @@
 
 /// Minimal package metadata decoded from `swift package describe --type json`.
 struct SwiftPackageDescription: Codable {
+  /// Minimal product metadata.
+  struct Product: Codable {
+    /// The product name.
+    let name: String
+  }
+
   /// Minimal target metadata.
   struct Target: Codable {
     /// The target name.
@@ -15,8 +21,27 @@ struct SwiftPackageDescription: Codable {
     var path: String?
   }
 
+  /// The package name.
+  let name: String
+  /// Products defined by the package.
+  let products: [Product]
   /// Targets defined by the package.
   let targets: [Target]
+
+  /// Creates a description from its parts.
+  init(name: String = "", products: [Product] = [], targets: [Target]) {
+    self.name = name
+    self.products = products
+    self.targets = targets
+  }
+
+  /// Decodes a description, treating a missing name or product list as empty.
+  init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+    products = try container.decodeIfPresent([Product].self, forKey: .products) ?? []
+    targets = try container.decode([Target].self, forKey: .targets)
+  }
 
   /// Whether the package defines at least one test target.
   var hasTestTargets: Bool {

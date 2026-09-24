@@ -9,7 +9,7 @@ import ArgumentParser
 ///
 /// Handles the `--version` flag, or shows the help when no subcommand is given.
 @main
-struct AgentTools: ParsableCommand {
+struct AgentTools: AsyncParsableCommand {
   /// Top-level command configuration.
   static let configuration = CommandConfiguration(
     commandName: "agt",
@@ -27,7 +27,7 @@ struct AgentTools: ParsableCommand {
   var version = false
 
   /// Prints the version, or the help when no subcommand is given.
-  mutating func run() throws {
+  mutating func run() async throws {
     guard version else { throw CleanExit.helpRequest(self) }
     print(ToolVersion.current)
   }

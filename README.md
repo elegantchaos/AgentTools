@@ -93,6 +93,43 @@ agt validate --target <name>
 
 When the fast check passes, run full validation.
 
+#### What full validation covers
+
+Full validation builds the product first, then tests it:
+
+1. Every product scheme is built for every platform the product supports, macOS first, to catch compiler errors the fast check missed.
+2. Then, platform by platform, it runs the tests of the product schemes whose test action includes tests, and the tests of the Swift packages that are part of the product.
+
+The product is the Xcode workspace in the repository root, or else its Xcode project, or else its root `Package.swift`. The default product scheme is the one named after the repository, or the root package's scheme when there is no workspace or project. For an Xcode product, the platforms are those its schemes support; a Swift package product is built for macOS unless configured otherwise.
+
+A local Swift package is part of the product when Xcode lists a scheme for it in the product's workspace, project, or package: packages added to the workspace, and local dependencies of the root package. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so by default their tests run only when the submodule differs from the commit the repository records, for example after editing it in place.
+
+Tests on iOS, tvOS, watchOS, and visionOS run on a simulator: for each platform, the first one with the newest OS that Xcode offers for the product scheme. A platform without an available simulator is reported as skipped.
+
+Xcode products build and test with `xcodebuild`. A Swift package product builds and tests with SwiftPM on macOS, because Xcode runs a package's build plugins only for its all-targets scheme, and with `xcodebuild` on other platforms. Either way, validation trusts package plugins and macros without Xcode's interactive prompt, as `swift build` does.
+
+#### Configuration
+
+Projects configure validation in `.agt/config.json`, committed, with per-machine overrides in `.agt/local/config.json`, which should be ignored by git. Every key is optional, and command-line options override both files:
+
+```json
+{
+  "validate": {
+    "schemes": ["App"],
+    "platforms": ["macOS", "iOS"],
+    "testPlatforms": ["macOS"],
+    "testSubmodules": "changed",
+    "excludePackages": ["SlowTests"]
+  }
+}
+```
+
+- `schemes` (`--schemes`): the schemes that build the product.
+- `platforms` (`--platforms`): the platforms to build for: `macOS`, `iOS`, `tvOS`, `watchOS`, `visionOS`.
+- `testPlatforms` (`--test-platforms`): the platforms to test on; defaults to the build platforms. `["macOS"]` avoids simulators.
+- `testSubmodules` (`--test-submodules`): when to test packages in git submodules: `changed` (the default), `always`, or `never`.
+- `excludePackages`: packages whose tests never run, by package name.
+
 See what validation would do, with each step's exact command, without running anything:
 
 ```shell

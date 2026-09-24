@@ -52,16 +52,20 @@ final class DiscoveryCache {
     return hasher.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
-  /// Returns the saved value for `key`, or computes, saves, and returns it. Nothing is saved when `compute` throws.
-  func value<T: Codable>(_ key: String, compute: () throws -> T) throws -> T {
+  /// Returns the saved value for `key`, or computes, saves, and returns it.
+  ///
+  /// Nothing is saved when `compute` throws, or when `isComplete` rejects the value, for results that can be
+  /// temporarily incomplete.
+  func value<T: Codable>(_ key: String, isComplete: (T) -> Bool = { _ in true }, compute: () throws -> T) throws -> T {
     if let data = contents.entries[key], let value = try? JSONDecoder().decode(T.self, from: data) {
       reused += 1
       return value
     }
     let value = try compute()
+    computed += 1
+    guard isComplete(value) else { return value }
     contents.entries[key] = try JSONEncoder().encode(value)
     changed = true
-    computed += 1
     return value
   }
 

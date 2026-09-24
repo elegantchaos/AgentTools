@@ -5,7 +5,8 @@ import PackageDescription
 let package = Package(
   name: "SwiftPackage",
   platforms: [
-    .macOS(.v26)
+    .macOS(.v26),
+    .iOS(.v26),
   ],
   products: [
     .library(name: "Greeting", targets: ["Greeting"])

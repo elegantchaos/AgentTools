@@ -164,17 +164,18 @@ struct ValidationTests {
     }
   }
 
-  @Test func defaultsUseRepoNameSchemeAndMacOSTests() throws {
+  @Test func defaultsLeaveSchemesAndPlatformsToDiscovery() throws {
     let config = try parseConfig([])
     #expect(config.target == nil)
     #expect(config.clean == false)
-    #expect(config.schemes == ["Example"])
-    #expect(config.destinations.isEmpty)
-    #expect(config.testDestinations == ["platform=macOS"])
+    #expect(config.schemes.isEmpty)
+    #expect(config.platforms.isEmpty)
+    #expect(config.testPlatforms.isEmpty)
+    #expect(config.testSubmodules == .changed)
+    #expect(config.excludedPackages.isEmpty)
     #expect(config.packageDirsOverride == nil)
     #expect(config.recursivePackageDiscovery)
     #expect(config.swiftPMDisableSandbox == false)
-    #expect(config.runXcodeTests == false)
   }
 
   @Test func explicitOptionsArePreserved() throws {
@@ -184,9 +185,9 @@ struct ValidationTests {
       "--workspace", "App.xcworkspace",
       "--project", "App.xcodeproj",
       "--schemes", "App, Widget",
-      "--destinations", "generic/platform=macOS,generic/platform=watchOS",
-      "--run-xcode-tests",
-      "--test-destinations", "platform=macOS,platform=visionOS Simulator",
+      "--platforms", "macOS,watchOS",
+      "--test-platforms", "macOS",
+      "--test-submodules", "always",
       "--package-dirs", "Dependencies/Core,,Tools",
       "--no-recursive-packages",
       "--swiftpm-disable-sandbox",
@@ -197,9 +198,9 @@ struct ValidationTests {
     #expect(config.workspaceOverride == "App.xcworkspace")
     #expect(config.projectOverride == "App.xcodeproj")
     #expect(config.schemes == ["App", "Widget"])
-    #expect(config.destinations == ["generic/platform=macOS", "generic/platform=watchOS"])
-    #expect(config.runXcodeTests)
-    #expect(config.testDestinations == ["platform=macOS", "platform=visionOS Simulator"])
+    #expect(config.platforms == [.macOS, .watchOS])
+    #expect(config.testPlatforms == [.macOS])
+    #expect(config.testSubmodules == .always)
     #expect(config.packageDirsOverride == ["Dependencies/Core", "Tools"])
     #expect(config.recursivePackageDiscovery == false)
     #expect(config.swiftPMDisableSandbox)
@@ -217,6 +218,8 @@ struct ValidationTests {
         "-workspace", "App.xcworkspace",
         "-scheme", "App",
         "-derivedDataPath", "/repo/.build/agt/DerivedData",
+        "-skipPackagePluginValidation",
+        "-skipMacroValidation",
         "-IDEPackageSupportDisableManifestSandbox=YES",
         "-IDEPackageSupportDisablePluginExecutionSandbox=YES",
         "-showBuildSettings",
@@ -264,44 +267,6 @@ struct ValidationTests {
   @Test func warningDetectionUsesFilteredLines() {
     #expect(ValidationOutput.containsWarnings("Compiling\n/tmp/A.swift:1:1: warning: unused\n"))
     #expect(ValidationOutput.containsWarnings("Compiling\nBUILD SUCCEEDED\n") == false)
-  }
-
-  @Test func buildDestinationMapsSupportedSDKPlatforms() {
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "macosx") == "generic/platform=macOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "iphoneos") == "generic/platform=iOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "iphonesimulator") == "generic/platform=iOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "appletvos") == "generic/platform=tvOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "appletvsimulator") == "generic/platform=tvOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "watchos") == "generic/platform=watchOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "watchsimulator") == "generic/platform=watchOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "xros") == "generic/platform=visionOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "xrsimulator") == "generic/platform=visionOS")
-    #expect(XcodeDestinations.destination(forSupportedPlatform: "driverkit") == nil)
-  }
-
-  @Test func buildDestinationsDecodeSupportedPlatformsFromBuildSettings() throws {
-    let output = """
-      [
-        {
-          "buildSettings": {
-            "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator"
-          }
-        },
-        {
-          "buildSettings": {
-            "SUPPORTED_PLATFORMS": "macosx watchos watchsimulator"
-          }
-        }
-      ]
-      """
-
-    #expect(
-      try XcodeDestinations.destinations(fromBuildSettingsJSON: output) == [
-        "generic/platform=iOS",
-        "generic/platform=macOS",
-        "generic/platform=watchOS",
-      ]
-    )
   }
 
   @Test func extractedFailureDiagnosticsPreferErrorBlock() {

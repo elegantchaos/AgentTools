@@ -12,7 +12,7 @@ import Foundation
 /// target. It builds that target first, then runs a conventionally named
 /// `<Target>Tests` target when one exists. Use comprehensive validation to
 /// verify the complete app or package and its dependencies.
-struct ValidateCommand: ParsableCommand {
+struct ValidateCommand: AsyncParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "validate",
@@ -44,20 +44,20 @@ struct ValidateCommand: ParsableCommand {
   var project: String?
 
   /// Comma-separated Xcode schemes.
-  @Option(help: ArgumentHelp("Xcode schemes for broad validation (default: repo name).", valueName: "csv"))
+  @Option(help: ArgumentHelp("Schemes that build the product (default: the repo name, or the root package's scheme).", valueName: "csv"))
   var schemes: String?
 
-  /// Comma-separated Xcode build destinations.
-  @Option(help: ArgumentHelp("Xcode build destinations (default: platforms supported by the scheme).", valueName: "csv"))
-  var destinations: String?
+  /// Comma-separated build platforms.
+  @Option(help: ArgumentHelp("Platforms to build for: macOS, iOS, tvOS, watchOS, visionOS (default: those the product supports).", valueName: "csv"))
+  var platforms: String?
 
-  /// Whether to run Xcode tests.
-  @Flag(help: "Also run xcodebuild test for test destinations.")
-  var runXcodeTests = false
+  /// Comma-separated test platforms.
+  @Option(help: ArgumentHelp("Platforms to test on (default: the build platforms).", valueName: "csv"))
+  var testPlatforms: String?
 
-  /// Comma-separated Xcode test destinations.
-  @Option(help: ArgumentHelp("Xcode test destinations (default: platform=macOS).", valueName: "csv"))
-  var testDestinations: String?
+  /// When to test packages in git submodules.
+  @Option(help: "When to test packages in git submodules (default: changed).")
+  var testSubmodules: TestSubmodules?
 
   /// Comma-separated Swift package directories.
   @Option(help: ArgumentHelp("Package directories for SwiftPM checks (absolute or repo-relative).", valueName: "csv"))
@@ -79,15 +79,17 @@ struct ValidateCommand: ParsableCommand {
   @OptionGroup var output: OutputOptions
 
   /// Executes validation in the current directory.
-  mutating func run() throws {
+  mutating func run() async throws {
     let repoPath = FileManager.default.currentDirectoryPath
-    try ValidationTool(config: config(repoPath: repoPath), repoPath: repoPath).run()
+    let file = try await ProjectConfiguration.load(repoPath: repoPath).validate
+    try ValidationTool(config: config(repoPath: repoPath, file: file), repoPath: repoPath).run()
   }
 
-  /// Resolves the parsed options into validation settings for a repository.
-  func config(repoPath: String) -> ValidationConfig {
+  /// Resolves the parsed options, over the project's configuration file settings, into validation settings.
+  func config(repoPath: String, file: ValidateFileSettings = ValidateFileSettings()) throws -> ValidationConfig {
     let schemes = Self.parseCSV(schemes)
-    let testDestinations = Self.parseCSV(testDestinations)
+    let platforms = self.platforms.map(Self.parseCSV) ?? file.platforms ?? []
+    let testPlatforms = self.testPlatforms.map(Self.parseCSV) ?? file.testPlatforms ?? []
     let packageDirs = Self.parseCSV(packageDirs)
 
     return ValidationConfig(
@@ -95,16 +97,36 @@ struct ValidateCommand: ParsableCommand {
       target: target,
       workspaceOverride: workspace,
       projectOverride: project,
-      schemes: schemes.isEmpty ? [ValidationDiscovery.repoName(repoPath)] : schemes,
-      destinations: Self.parseCSV(destinations),
-      runXcodeTests: runXcodeTests,
-      testDestinations: testDestinations.isEmpty ? ["platform=macOS"] : testDestinations,
+      schemes: schemes.isEmpty ? file.schemes ?? [] : schemes,
+      platforms: try Self.parsePlatforms(platforms),
+      testPlatforms: try Self.parsePlatforms(testPlatforms),
+      testSubmodules: try testSubmodules ?? Self.parseTestSubmodules(file.testSubmodules),
+      excludedPackages: file.excludePackages ?? [],
       packageDirsOverride: packageDirs.isEmpty ? nil : packageDirs,
       recursivePackageDiscovery: !noRecursivePackages,
       swiftPMDisableSandbox: swiftpmDisableSandbox,
       outputMode: output.mode,
       planOnly: plan
     )
+  }
+
+  /// Converts platform names, failing on an unknown name.
+  private static func parsePlatforms(_ names: [String]) throws -> [ApplePlatform] {
+    try names.map { name in
+      guard let platform = ApplePlatform(name: name) else {
+        throw ToolError("Unknown platform '\(name)'. Use \(ApplePlatform.allCases.map(\.rawValue).joined(separator: ", ")).")
+      }
+      return platform
+    }
+  }
+
+  /// Converts a configured submodule test policy, failing on an unknown value.
+  private static func parseTestSubmodules(_ value: String?) throws -> TestSubmodules {
+    guard let value else { return .changed }
+    guard let policy = TestSubmodules(rawValue: value) else {
+      throw ToolError("Unknown testSubmodules value '\(value)'. Use \(TestSubmodules.allCases.map(\.rawValue).joined(separator: ", ")).")
+    }
+    return policy
   }
 
   /// Splits a comma-separated option into trimmed non-empty items.

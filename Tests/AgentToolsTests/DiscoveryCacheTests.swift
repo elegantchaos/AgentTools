@@ -68,6 +68,18 @@ struct DiscoveryCacheTests {
     #expect(try cache.value("answer") { 3 } == 3)
   }
 
+  @Test func incompleteValuesAreNotSaved() throws {
+    let root = try makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let cache = DiscoveryCache(path: root.appendingPathComponent("discovery.json").path, fingerprint: "one")
+
+    let hasBoth = { (platforms: [String]) in platforms.count == 2 }
+
+    #expect(try cache.value("simulators", isComplete: hasBoth, compute: { ["macOS"] }) == ["macOS"])
+    #expect(try cache.value("simulators", isComplete: hasBoth, compute: { ["macOS", "iOS"] }) == ["macOS", "iOS"])
+    #expect(try cache.value("simulators", isComplete: hasBoth, compute: { [] }) == ["macOS", "iOS"])
+  }
+
   @Test func unreadableCacheFileIsIgnored() throws {
     let root = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }

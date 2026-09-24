@@ -13,14 +13,16 @@ struct ValidationConfig {
   let workspaceOverride: String?
   /// Explicit project path.
   let projectOverride: String?
-  /// Schemes selected for Xcode validation.
+  /// Schemes that build the product; empty to use the default.
   let schemes: [String]
-  /// Explicit build destinations.
-  let destinations: [String]
-  /// Whether to run Xcode tests.
-  let runXcodeTests: Bool
-  /// Test destinations for Xcode tests.
-  let testDestinations: [String]
+  /// Platforms to build for; empty to use the platforms the product supports.
+  let platforms: [ApplePlatform]
+  /// Platforms to test on; empty to test on every build platform.
+  let testPlatforms: [ApplePlatform]
+  /// When to test packages in git submodules.
+  let testSubmodules: TestSubmodules
+  /// Packages whose tests never run.
+  let excludedPackages: [String]
   /// Explicit Swift package directories.
   let packageDirsOverride: [String]?
   /// Whether to discover nested packages.

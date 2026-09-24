@@ -43,7 +43,7 @@ struct ValidationPaths {
 
   /// Returns a path with macOS's `/private` prefix removed from `/private/var`, `/private/tmp`, and `/private/etc`,
   /// so that both spellings of the same location compare equal.
-  private static func canonical(_ path: String) -> String {
+  static func canonical(_ path: String) -> String {
     for directory in ["var", "tmp", "etc"] where path.hasPrefix("/private/\(directory)/") || path == "/private/\(directory)" {
       return String(path.dropFirst("/private".count))
     }

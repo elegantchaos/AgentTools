@@ -1,5 +1,13 @@
 # Release Notes
 
+## 3.4.0
+
+- Full validation covers the whole product. It builds every product scheme for every supported platform, macOS first, then runs, platform by platform, the product schemes' tests and the tests of the local Swift packages that are part of the product, on simulators for iOS, tvOS, watchOS, and visionOS. Previously it took one of three routes (workspace, packages, or project), and ran no Xcode tests unless asked.
+- Local packages in git submodules are tested only when the submodule has changed, by default.
+- Adds project configuration in `.agt/config.json` and `.agt/local/config.json`: `schemes`, `platforms`, `testPlatforms`, `testSubmodules`, and `excludePackages`.
+- Breaking: replaces `--destinations` and `--test-destinations` with `--platforms` and `--test-platforms`, which take platform names, and removes `--run-xcode-tests`: tests always run. Adds `--test-submodules`.
+- `xcodebuild` runs trust package plugins and macros without Xcode's interactive prompt, as `swift build` does.
+
 ## 3.3.0
 
 - `agt validate` caches discovery results, such as package descriptions and scheme platforms, in `.build/agt/discovery.json`, and reuses them until a package manifest, `Package.resolved`, Xcode project, workspace, or scheme changes. On a workspace with 16 packages, discovery drops from about 12 seconds to about 1.
