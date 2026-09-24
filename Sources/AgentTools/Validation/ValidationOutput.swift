@@ -8,8 +8,12 @@ import Foundation
 /// Shapes subprocess output into the diagnostics shown during validation.
 enum ValidationOutput {
   /// Output fragments that are never shown.
+  ///
+  /// SwiftPM warns about its user configuration directory when validation runs in a sandbox that cannot
+  /// write there; validation passes its own cache paths, so nothing is lost.
   private static let suppressedPatterns = [
-    "remark: compiled module was created by a different version of the compiler"
+    "remark: compiled module was created by a different version of the compiler",
+    "disabling user-level cache features",
   ]
 
   /// Output fragments that make a line visible in filtered mode.

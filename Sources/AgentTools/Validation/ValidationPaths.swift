@@ -5,42 +5,53 @@
 
 import Foundation
 
-/// Repository-local output locations for a validation run.
+/// Per-project locations that validation writes to, all under `.build/agt/` in the repository.
+///
+/// Downloads use SwiftPM's and Xcode's standard caches, so validation shares them with ordinary builds.
 struct ValidationPaths {
-  /// Directory for per-step validation logs.
-  let logRoot: String
+  /// Repository root.
+  let repoPath: String
+
+  /// Root of the per-project output.
+  var root: String { "\(repoPath)/.build/agt" }
+  /// Directory for per-step logs.
+  var logRoot: String { "\(root)/logs" }
   /// Private DerivedData directory for Xcode validation.
-  let derivedDataPath: String
+  var derivedDataPath: String { "\(root)/DerivedData" }
 
-  /// Returns the directory that holds step logs for a repository.
-  static func logRoot(repoPath: String) -> String {
-    "\(repoPath)/.build/validation-logs"
-  }
-
-  /// Returns the log file path for a step in `logRoot`, using a filesystem-safe form of its name.
-  static func logPath(_ name: String, logRoot: String) -> String {
-    "\(logRoot)/\(name.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "_", options: .regularExpression)).log"
-  }
-
-  /// Resolves the output locations for a repository, optionally clearing previous output, and creates them.
+  /// Resolves the locations for a repository, optionally clearing previous output, and creates them.
   static func prepare(repoPath: String, clean: Bool) throws -> ValidationPaths {
-    let paths = ValidationPaths(
-      logRoot: logRoot(repoPath: repoPath),
-      derivedDataPath: "\(repoPath)/.build/agt-validate/DerivedData"
-    )
-
+    let paths = ValidationPaths(repoPath: repoPath)
     let fileManager = FileManager.default
     if clean {
-      try? fileManager.removeItem(atPath: paths.logRoot)
-      try? fileManager.removeItem(atPath: paths.derivedDataPath)
+      try? fileManager.removeItem(atPath: paths.root)
     }
-    try fileManager.createDirectory(atPath: paths.logRoot, withIntermediateDirectories: true)
-    try fileManager.createDirectory(atPath: paths.derivedDataPath, withIntermediateDirectories: true)
+    for directory in [paths.logRoot, paths.derivedDataPath] {
+      try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    }
     return paths
+  }
+
+  /// Returns the private SwiftPM build directory for a package, keeping the root package apart from nested ones.
+  func swiftPMScratchPath(forPackage packageDir: String) -> String {
+    let repo = Self.canonical(repoPath)
+    let package = Self.canonical(packageDir)
+    guard package != repo else { return "\(root)/swiftpm/root" }
+    let relative = package.hasPrefix("\(repo)/") ? String(package.dropFirst(repo.count + 1)) : package
+    return "\(root)/swiftpm/packages/\(relative)"
+  }
+
+  /// Returns a path with macOS's `/private` prefix removed from `/private/var`, `/private/tmp`, and `/private/etc`,
+  /// so that both spellings of the same location compare equal.
+  private static func canonical(_ path: String) -> String {
+    for directory in ["var", "tmp", "etc"] where path.hasPrefix("/private/\(directory)/") || path == "/private/\(directory)" {
+      return String(path.dropFirst("/private".count))
+    }
+    return path
   }
 
   /// Returns the log file path for a step, using a filesystem-safe form of its name.
   func logPath(_ name: String) -> String {
-    Self.logPath(name, logRoot: logRoot)
+    "\(logRoot)/\(name.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "_", options: .regularExpression)).log"
   }
 }

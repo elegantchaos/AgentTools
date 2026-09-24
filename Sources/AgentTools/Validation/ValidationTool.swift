@@ -13,6 +13,8 @@ final class ValidationTool {
   private let repoPath: String
   /// Runs and records validation steps.
   private let runner: StepRunner
+  /// The sandbox validation runs in, detected when validation starts.
+  private var sandbox = EnclosingSandbox(isNested: false)
 
   /// Creates a tool that validates the repository at `repoPath`.
   init(config: ValidationConfig, repoPath: String) {
@@ -21,9 +23,14 @@ final class ValidationTool {
     self.runner = StepRunner(repoPath: repoPath, outputMode: config.outputMode)
   }
 
-  /// Adds the build system and compiler flags used for every SwiftPM validation build.
-  static func swiftPMArguments(_ arguments: [String]) -> [String] {
-    arguments + ["--build-system", "swiftbuild", "-Xswiftc", "-DVALIDATING"]
+  /// Returns a `swift` command for a package that builds into validation's private build directory.
+  ///
+  /// `command` is the subcommand, such as `["build"]` or `["package"]`; its own arguments follow the result.
+  static func swiftPMArguments(_ command: [String], packageDir: String, paths: ValidationPaths, disableSandbox: Bool) -> [String] {
+    ["swift"] + command + [
+      "--package-path", packageDir,
+      "--scratch-path", paths.swiftPMScratchPath(forPackage: packageDir),
+    ] + (disableSandbox ? ["--disable-sandbox"] : [])
   }
 
   /// Subprocess runner rooted at the repository.
@@ -38,22 +45,24 @@ final class ValidationTool {
     defer { runner.printSummary() }
 
     let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: config.clean)
+    sandbox = try EnclosingSandbox.detect(using: process)
+    if sandbox.isNested {
+      print("Running inside another sandbox; turning off SwiftPM's and Xcode's own sandboxes.")
+    }
     let packages = ValidationDiscovery.packageDirectories(
       repoPath: repoPath,
       overrides: config.packageDirsOverride,
       recursive: config.recursivePackageDiscovery
     )
 
-    var workspace = ValidationDiscovery.workspace(override: config.workspaceOverride, repoPath: repoPath)
-    if let candidate = workspace, !isUsable(["-workspace", candidate]) {
-      print("Workspace exists but is not usable by xcodebuild: \(candidate). Falling back to project/SwiftPM.")
-      workspace = nil
+    let workspace = ValidationDiscovery.workspace(override: config.workspaceOverride, repoPath: repoPath)
+    if let workspace {
+      try checkReadable(["-workspace", workspace])
     }
 
-    var project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
-    if let candidate = project, !isUsable(["-project", candidate]) {
-      print("Project exists but is not usable by xcodebuild: \(candidate). Falling back to SwiftPM when possible.")
-      project = nil
+    let project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
+    if let project {
+      try checkReadable(["-project", project])
     }
 
     if let target = config.target {
@@ -108,7 +117,7 @@ final class ValidationTool {
     for packageDir in packages {
       let package: SwiftPackageDescription
       do {
-        package = try describePackage(packageDir)
+        package = try describePackage(packageDir, paths: paths)
       } catch {
         throw ToolError("Could not inspect Swift package at \(packageDir) before validation.\n\(error)")
       }
@@ -116,7 +125,7 @@ final class ValidationTool {
       try runner.run(
         title: "Build Swift package \(packageDir)",
         summary: "swift build \(packageDir)",
-        arguments: swiftPMCommand(["build", "--package-path", packageDir]),
+        arguments: swiftPMCommand(["build"], packageDir: packageDir, paths: paths),
         logPath: paths.logPath("swift_build_\(packageDir)")
       )
 
@@ -128,7 +137,7 @@ final class ValidationTool {
       try runner.run(
         title: "Test Swift package \(packageDir)",
         summary: "swift test \(packageDir)",
-        arguments: swiftPMCommand(["test", "--package-path", packageDir]),
+        arguments: swiftPMCommand(["test"], packageDir: packageDir, paths: paths),
         logPath: paths.logPath("swift_test_\(packageDir)")
       )
     }
@@ -143,7 +152,7 @@ final class ValidationTool {
     for packageDir in packages {
       let package: SwiftPackageDescription
       do {
-        package = try describePackage(packageDir)
+        package = try describePackage(packageDir, paths: paths)
       } catch {
         inspectionErrors.append("\(error)")
         continue
@@ -153,7 +162,7 @@ final class ValidationTool {
       try runner.run(
         title: "Build Swift target \(target)",
         summary: "swift build \(target)",
-        arguments: swiftPMCommand(["build", "--package-path", packageDir, "--target", target]),
+        arguments: swiftPMCommand(["build"], packageDir: packageDir, paths: paths) + ["--target", target],
         logPath: paths.logPath("swift_build_target_\(target)_\(packageDir)")
       )
 
@@ -162,7 +171,7 @@ final class ValidationTool {
         try runner.run(
           title: "Test Swift target \(testTarget)",
           summary: "swift test \(testTarget)",
-          arguments: swiftPMCommand(["test", "--package-path", packageDir, "--filter", testTarget]),
+          arguments: swiftPMCommand(["test"], packageDir: packageDir, paths: paths) + ["--filter", testTarget],
           logPath: paths.logPath("swift_test_target_\(testTarget)_\(packageDir)")
         )
       } else {
@@ -210,32 +219,23 @@ final class ValidationTool {
 
   /// Returns the `xcodebuild` arguments for one scheme, destination, and set of actions.
   private func xcodebuildArguments(container: [String], scheme: String, destination: String, paths: ValidationPaths, actions: [String]) -> [String] {
-    var args = ["xcodebuild"] + container + ["-scheme", scheme, "-destination", destination, "-derivedDataPath", paths.derivedDataPath]
+    var args = ["xcodebuild"] + container + ["-scheme", scheme, "-destination", destination, "-derivedDataPath", paths.derivedDataPath] + sandbox.xcodebuildDefaults
     if config.outputMode != .raw {
       args.append("-quiet")
     }
-    return args + ["CODE_SIGNING_ALLOWED=NO"] + actions
+    return args + ["CODE_SIGNING_ALLOWED=NO"] + sandbox.xcodebuildBuildSettings + actions
   }
 
-  /// Returns a `swift` command with validation flags and the optional sandbox override.
-  private func swiftPMCommand(_ arguments: [String]) -> [String] {
-    let args = Self.swiftPMArguments(["swift"] + arguments)
-    return config.swiftPMDisableSandbox ? args + ["--disable-sandbox"] : args
+  /// Returns a `swift` command for a package, turning off SwiftPM's sandbox when requested or already sandboxed.
+  private func swiftPMCommand(_ command: [String], packageDir: String, paths: ValidationPaths) -> [String] {
+    Self.swiftPMArguments(command, packageDir: packageDir, paths: paths, disableSandbox: config.swiftPMDisableSandbox || sandbox.isNested)
   }
 
   /// Returns explicit destinations, or the generic destinations for the platforms a scheme supports.
   private func buildDestinations(container: [String], scheme: String, paths: ValidationPaths) throws -> [String] {
     guard config.destinations.isEmpty else { return config.destinations }
 
-    let isWorkspace = container.first == "-workspace"
-    let result = try process.capture(
-      XcodeDestinations.showBuildSettingsArguments(
-        workspace: isWorkspace ? container.last : nil,
-        project: isWorkspace ? nil : container.last,
-        scheme: scheme,
-        derivedDataPath: paths.derivedDataPath
-      )
-    )
+    let result = try process.capture(XcodeDestinations.showBuildSettingsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
     guard result.status == 0 else {
       throw ToolError("Failed to read supported platforms for scheme '\(scheme)':\n\(result.stderr)")
     }
@@ -248,20 +248,20 @@ final class ValidationTool {
   }
 
   /// Reads a package's targets with `swift package describe`.
-  private func describePackage(_ packageDir: String) throws -> SwiftPackageDescription {
-    let result = try process.capture(["swift", "package", "--package-path", packageDir, "describe", "--type", "json"])
+  private func describePackage(_ packageDir: String, paths: ValidationPaths) throws -> SwiftPackageDescription {
+    let result = try process.capture(swiftPMCommand(["package"], packageDir: packageDir, paths: paths) + ["describe", "--type", "json"])
     guard result.status == 0 else {
-      let suggestion =
-        result.stderr.contains("sandbox_apply: Operation not permitted")
-        ? "\nRetry with --swiftpm-disable-sandbox if this environment blocks SwiftPM's internal sandbox."
-        : ""
-      throw ToolError("Failed to describe Swift package at \(packageDir):\n\(result.stderr)\(suggestion)")
+      throw ToolError("Failed to describe Swift package at \(packageDir):\n\(result.stderr)")
     }
     return try JSONDecoder().decode(SwiftPackageDescription.self, from: Data(result.stdout.utf8))
   }
 
-  /// Returns `true` when `xcodebuild -list` accepts the workspace or project.
-  private func isUsable(_ container: [String]) -> Bool {
-    (try? process.capture(["xcodebuild", "-list"] + container))?.status == 0
+  /// Throws when `xcodebuild -list` cannot read the workspace or project, so validation never silently skips it.
+  private func checkReadable(_ container: [String]) throws {
+    let result = try process.capture(["xcodebuild", "-list"] + container + sandbox.xcodebuildDefaults)
+    guard result.status == 0 else {
+      let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
+      throw ToolError("xcodebuild cannot read \(container[1]):\n\(details)")
+    }
   }
 }

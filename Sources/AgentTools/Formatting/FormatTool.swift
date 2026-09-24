@@ -57,14 +57,14 @@ struct FormatTool {
       return
     }
 
-    let logRoot = ValidationPaths.logRoot(repoPath: repoPath)
+    let paths = ValidationPaths(repoPath: repoPath)
     if !check {
       try runner.run(
         title: "Format \(files.count) Swift files",
         summary: "format Swift files",
         arguments: Self.formatArguments(files),
         display: Self.formatArguments(["<\(files.count) files>"]),
-        logPath: ValidationPaths.logPath("format", logRoot: logRoot)
+        logPath: paths.logPath("format")
       )
     }
 
@@ -73,7 +73,7 @@ struct FormatTool {
       summary: "lint Swift files",
       arguments: Self.lintArguments(files, strict: check),
       display: Self.lintArguments(["<\(files.count) files>"], strict: check),
-      logPath: ValidationPaths.logPath("lint", logRoot: logRoot)
+      logPath: paths.logPath("lint")
     )
   }
 }

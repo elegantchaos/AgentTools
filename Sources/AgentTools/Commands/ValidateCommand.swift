@@ -20,7 +20,8 @@ struct ValidateCommand: ParsableCommand {
     discussion: """
       Run from the repository root. Builds and tests the Xcode workspace, discovered Swift packages, or \
       Xcode project, in that order of preference. Validation never modifies source; run agt format first. \
-      Logs are written to .build/validation-logs and Xcode products to .build/agt-validate/DerivedData.
+      Build products and logs are written to .build/agt; downloads use SwiftPM's and Xcode's standard caches. \
+      Inside another sandbox, such as an agent's, SwiftPM's and Xcode's own sandboxes are turned off.
       """
   )
 
@@ -29,7 +30,7 @@ struct ValidateCommand: ParsableCommand {
   var target: String?
 
   /// Whether to clear previous validation output.
-  @Flag(name: [.customShort("c"), .long], help: "Remove validation logs and private DerivedData before running checks.")
+  @Flag(name: [.customShort("c"), .long], help: "Remove validation's build products and logs in .build/agt before running checks.")
   var clean = false
 
   /// Explicit workspace path.
@@ -65,7 +66,7 @@ struct ValidateCommand: ParsableCommand {
   var noRecursivePackages = false
 
   /// Whether to disable SwiftPM's sandbox.
-  @Flag(help: "Disable SwiftPM's internal sandbox (opt-in fallback only).")
+  @Flag(help: "Disable SwiftPM's internal sandbox. Validation does this automatically when it runs inside another sandbox.")
   var swiftpmDisableSandbox = false
 
   /// Terminal output options.

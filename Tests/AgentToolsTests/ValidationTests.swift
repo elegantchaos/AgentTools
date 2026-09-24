@@ -17,7 +17,7 @@ struct ValidationTests {
     try writePackage(at: repoURL)
     _ = try ValidationPaths.prepare(repoPath: repoURL.path, clean: false)
 
-    let buildPackageURL = repoURL.appendingPathComponent(".build/agt-validate/DerivedData/BuildArtifact")
+    let buildPackageURL = repoURL.appendingPathComponent(".build/agt/DerivedData/BuildArtifact")
     try writePackage(at: buildPackageURL)
 
     let nestedPackageURL = repoURL.appendingPathComponent("Dependencies/ExamplePackage")
@@ -90,19 +90,48 @@ struct ValidationTests {
     #expect(package.hasTestTargets == expected)
   }
 
-  @Test func swiftPMValidationUsesSwiftBuildSystem() {
+  @Test func swiftPMArgumentsUseAPrivateBuildDirectory() {
     #expect(
-      ValidationTool.swiftPMArguments(["swift", "test", "--filter", "ExampleTests"]) == [
-        "swift",
-        "test",
-        "--filter",
-        "ExampleTests",
-        "--build-system",
-        "swiftbuild",
-        "-Xswiftc",
-        "-DVALIDATING",
+      ValidationTool.swiftPMArguments(["build"], packageDir: "/repo/Dependencies/Core", paths: examplePaths, disableSandbox: false) == [
+        "swift", "build",
+        "--package-path", "/repo/Dependencies/Core",
+        "--scratch-path", "/repo/.build/agt/swiftpm/packages/Dependencies/Core",
       ]
     )
+  }
+
+  @Test func rootPackageScratchPathIsSeparateFromNestedPackages() {
+    #expect(examplePaths.swiftPMScratchPath(forPackage: "/repo") == "/repo/.build/agt/swiftpm/root")
+    #expect(examplePaths.swiftPMScratchPath(forPackage: "/repo/Tools") == "/repo/.build/agt/swiftpm/packages/Tools")
+  }
+
+  @Test func scratchPathsMatchSymlinkedSpellingsOfTheRepository() {
+    let paths = ValidationPaths(repoPath: "/private/var/folders/repo")
+    #expect(paths.swiftPMScratchPath(forPackage: "/var/folders/repo") == "/private/var/folders/repo/.build/agt/swiftpm/root")
+    #expect(paths.swiftPMScratchPath(forPackage: "/var/folders/repo/Tools") == "/private/var/folders/repo/.build/agt/swiftpm/packages/Tools")
+  }
+
+  @Test func swiftPMArgumentsCanDisableSandbox() {
+    #expect(
+      ValidationTool.swiftPMArguments(["package"], packageDir: "/repo", paths: examplePaths, disableSandbox: true).last == "--disable-sandbox"
+    )
+  }
+
+  @Test(arguments: [
+    (Int32(71), "sandbox-exec: sandbox_apply: Operation not permitted", true),
+    (Int32(0), "", false),
+    (Int32(1), "sandbox-exec: invalid profile", false),
+  ])
+  func nestedSandboxDetection(status: Int32, stderr: String, expected: Bool) {
+    #expect(EnclosingSandbox.isNestedFailure(status: status, stderr: stderr) == expected)
+  }
+
+  @Test func nestedSandboxTurnsOffXcodeSandboxes() {
+    let nested = EnclosingSandbox(isNested: true)
+    #expect(nested.xcodebuildDefaults == ["-IDEPackageSupportDisableManifestSandbox=YES", "-IDEPackageSupportDisablePluginExecutionSandbox=YES"])
+    #expect(nested.xcodebuildBuildSettings == ["SWIFTC_DISABLE_SANDBOX=YES", "ENABLE_USER_SCRIPT_SANDBOXING=NO"])
+    #expect(EnclosingSandbox(isNested: false).xcodebuildDefaults.isEmpty)
+    #expect(EnclosingSandbox(isNested: false).xcodebuildBuildSettings.isEmpty)
   }
 
   @Test(arguments: [
@@ -165,48 +194,47 @@ struct ValidationTests {
     #expect(config.swiftPMDisableSandbox)
   }
 
-  @Test func buildSettingsDiscoveryUsesRepoLocalDerivedData() {
+  @Test func buildSettingsDiscoveryUsesValidationDirectories() {
     #expect(
       XcodeDestinations.showBuildSettingsArguments(
-        workspace: "App.xcworkspace",
-        project: nil,
+        container: ["-workspace", "App.xcworkspace"],
         scheme: "App",
-        derivedDataPath: ".build/agt-validate/DerivedData"
+        paths: examplePaths,
+        sandbox: EnclosingSandbox(isNested: true)
       ) == [
         "xcodebuild",
         "-workspace", "App.xcworkspace",
         "-scheme", "App",
-        "-derivedDataPath", ".build/agt-validate/DerivedData",
+        "-derivedDataPath", "/repo/.build/agt/DerivedData",
+        "-IDEPackageSupportDisableManifestSandbox=YES",
+        "-IDEPackageSupportDisablePluginExecutionSandbox=YES",
         "-showBuildSettings",
         "-json",
       ]
     )
   }
 
-  @Test func validationPathsUseRepoLocalDerivedData() throws {
+  @Test func validationPathsLiveUnderBuildAgt() throws {
     let repoURL = try makeTemporaryRepo()
     defer { try? FileManager.default.removeItem(at: repoURL) }
 
-    let staleLogURL = repoURL.appendingPathComponent(".build/validation-logs/stale.log")
-    let staleDerivedDataURL = repoURL.appendingPathComponent(".build/agt-validate/DerivedData/stale")
-    try FileManager.default.createDirectory(at: staleLogURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(at: staleDerivedDataURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try "old log".write(to: staleLogURL, atomically: true, encoding: .utf8)
-    try "old derived data".write(to: staleDerivedDataURL, atomically: true, encoding: .utf8)
-
+    let staleURL = repoURL.appendingPathComponent(".build/agt/logs/stale.log")
+    let userBuildURL = repoURL.appendingPathComponent(".build/debug/keep")
+    for url in [staleURL, userBuildURL] {
+      try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try "old".write(to: url, atomically: true, encoding: .utf8)
+    }
     let paths = try ValidationPaths.prepare(repoPath: repoURL.path, clean: true)
 
-    #expect(paths.logRoot == repoURL.appendingPathComponent(".build/validation-logs").path)
-    #expect(paths.derivedDataPath == repoURL.appendingPathComponent(".build/agt-validate/DerivedData").path)
+    #expect(paths.logRoot == repoURL.appendingPathComponent(".build/agt/logs").path)
+    #expect(paths.derivedDataPath == repoURL.appendingPathComponent(".build/agt/DerivedData").path)
     #expect(FileManager.default.fileExists(atPath: paths.logRoot))
-    #expect(FileManager.default.fileExists(atPath: paths.derivedDataPath))
-    #expect(!FileManager.default.fileExists(atPath: staleLogURL.path))
-    #expect(!FileManager.default.fileExists(atPath: staleDerivedDataURL.path))
+    #expect(!FileManager.default.fileExists(atPath: staleURL.path))
+    #expect(FileManager.default.fileExists(atPath: userBuildURL.path))
   }
 
   @Test func logPathsAreSanitized() {
-    let paths = ValidationPaths(logRoot: "/repo/.build/validation-logs", derivedDataPath: "/repo/.build/agt-validate/DerivedData")
-    #expect(paths.logPath("swift_build_/repo/Sub Package") == "/repo/.build/validation-logs/swift_build_repo_Sub_Package.log")
+    #expect(examplePaths.logPath("swift_build_/repo/Sub Package") == "/repo/.build/agt/logs/swift_build_repo_Sub_Package.log")
   }
 
   @Test(arguments: [
@@ -215,6 +243,7 @@ struct ValidationTests {
     ("note: expanded from macro", "note: expanded from macro"),
     ("** BUILD FAILED **", "** BUILD FAILED **"),
     ("remark: compiled module was created by a different version of the compiler", nil),
+    ("warning: /Users/me/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.", nil),
     ("CompileSwift normal arm64 MyFile.swift", nil),
   ])
   func filteredValidationLineBehavior(line: String, expected: String?) {
@@ -283,6 +312,9 @@ struct ValidationTests {
       ]
     )
   }
+
+  /// Validation paths for a repository at `/repo`.
+  private let examplePaths = ValidationPaths(repoPath: "/repo")
 
   /// Parses command-line arguments into a configuration for a repository named `Example`.
   private func parseConfig(_ arguments: [String]) throws -> ValidationConfig {

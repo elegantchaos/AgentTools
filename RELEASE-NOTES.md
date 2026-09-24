@@ -1,5 +1,12 @@
 # Release Notes
 
+## 3.1.0
+
+- `agt validate` builds each Swift package into a private build directory under `.build/agt/`, so it no longer shares `.build` with the IDE or your own builds. Logs move to `.build/agt/logs` and Xcode products to `.build/agt/DerivedData`.
+- SwiftPM builds use the default build system and no longer define `VALIDATING`; `#Preview` blocks build without it.
+- Inside another sandbox, such as a coding agent's, `agt validate` turns off SwiftPM's and Xcode's own sandboxes, which cannot start there. The README lists the two locations an agent's sandbox must allow.
+- A workspace or project that `xcodebuild` cannot read is now reported as a failure, instead of being skipped in favour of Swift packages.
+
 ## 3.0.0
 
 - Adds `agt format`, which formats every tracked and untracked Swift file in the repository and lints them, reporting findings without failing. Swift files under `Tests/**/Resources` are skipped as fixtures. `agt format --check` modifies nothing and fails on any finding.

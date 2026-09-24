@@ -14,20 +14,8 @@ enum XcodeDestinations {
   }
 
   /// Returns the `xcodebuild` arguments that print a scheme's build settings as JSON.
-  static func showBuildSettingsArguments(
-    workspace: String?,
-    project: String?,
-    scheme: String,
-    derivedDataPath: String
-  ) -> [String] {
-    var args = ["xcodebuild"]
-    if let workspace {
-      args += ["-workspace", workspace]
-    } else if let project {
-      args += ["-project", project]
-    }
-    args += ["-scheme", scheme, "-derivedDataPath", derivedDataPath, "-showBuildSettings", "-json"]
-    return args
+  static func showBuildSettingsArguments(container: [String], scheme: String, paths: ValidationPaths, sandbox: EnclosingSandbox) -> [String] {
+    ["xcodebuild"] + container + ["-scheme", scheme, "-derivedDataPath", paths.derivedDataPath] + sandbox.xcodebuildDefaults + ["-showBuildSettings", "-json"]
   }
 
   /// Returns unique generic destinations for every `SUPPORTED_PLATFORMS` entry in build settings JSON.
