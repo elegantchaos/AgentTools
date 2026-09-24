@@ -1,5 +1,9 @@
 # Release Notes
 
+## 3.2.0
+
+- Adds `agt --version`, which prints the release tag, or the full `git describe` output for a build that is not exactly a release.
+
 ## 3.1.0
 
 - `agt validate` builds each Swift package into a private build directory under `.build/agt/`, so it no longer shares `.build` with the IDE or your own builds. Logs move to `.build/agt/logs` and Xcode products to `.build/agt/DerivedData`.

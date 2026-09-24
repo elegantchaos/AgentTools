@@ -6,6 +6,8 @@
 import ArgumentParser
 
 /// Entry point for shared agent maintenance and repository validation commands.
+///
+/// Handles the `--version` flag, or shows the help when no subcommand is given.
 @main
 struct AgentTools: ParsableCommand {
   /// Top-level command configuration.
@@ -19,4 +21,14 @@ struct AgentTools: ParsableCommand {
       ValidateCommand.self,
     ]
   )
+
+  /// Whether to show the version.
+  @Flag(help: "Show the version.")
+  var version = false
+
+  /// Prints the version, or the help when no subcommand is given.
+  mutating func run() throws {
+    guard version else { throw CleanExit.helpRequest(self) }
+    print(ToolVersion.current)
+  }
 }
