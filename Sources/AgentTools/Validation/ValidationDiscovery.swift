@@ -99,6 +99,21 @@ enum ValidationDiscovery {
     }
   }
 
+  /// Returns the directories of the root packages of a container: the packages a workspace lists as members, or the
+  /// package in the repository root when there is no container. Xcode gives a package's schemes a test action only
+  /// when the package is a root; a package that a project references, or that another package depends on, gets
+  /// build-only schemes.
+  static func rootPackages(container: [String], repoPath: String) -> [String] {
+    guard !container.isEmpty else { return [repoPath] }
+    guard container.count == 2, container[0] == "-workspace",
+      let contents = try? String(contentsOfFile: "\(container[1])/contents.xcworkspacedata", encoding: .utf8)
+    else { return [] }
+    let directory = URL(fileURLWithPath: container[1]).deletingLastPathComponent()
+    return XcodeSchemes.memberPaths(fromWorkspaceData: contents).filter { !$0.hasSuffix(".xcodeproj") }.map { member in
+      (member.hasPrefix("/") ? URL(fileURLWithPath: member) : directory.appendingPathComponent(member)).standardizedFileURL.path
+    }
+  }
+
   /// Returns the repository-relative paths of the files whose contents determine discovery's results: package
   /// manifests and resolved dependencies, Xcode workspaces and projects, and their shared and user schemes.
   static func fingerprintFiles(repoPath: String) -> [String] {

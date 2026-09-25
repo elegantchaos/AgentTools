@@ -319,6 +319,21 @@ struct ValidationPlanTests {
     #expect(packages == ["Dependencies/Kit", "Shared", "Dependencies/Core"].map { ValidationPaths.canonical(root.appendingPathComponent($0).path) })
   }
 
+  @Test func rootPackagesAreWorkspaceMembersOnly() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AgentTools-Roots-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let workspace = root.appendingPathComponent("App.xcworkspace")
+    try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+    try #"<Workspace><FileRef location = "group:App.xcodeproj"></FileRef><FileRef location = "group:Dependencies/Core"></FileRef></Workspace>"#.write(
+      to: workspace.appendingPathComponent("contents.xcworkspacedata"), atomically: true, encoding: .utf8)
+
+    let roots = ValidationDiscovery.rootPackages(container: ["-workspace", workspace.path], repoPath: root.path).map(ValidationPaths.canonical)
+
+    #expect(roots == [ValidationPaths.canonical(root.appendingPathComponent("Dependencies/Core").path)])
+    #expect(ValidationDiscovery.rootPackages(container: ["-project", root.appendingPathComponent("App.xcodeproj").path], repoPath: root.path).isEmpty)
+    #expect(ValidationDiscovery.rootPackages(container: [], repoPath: "/repo") == ["/repo"])
+  }
+
   @Test func productPackagesIncludeLocalDependenciesTransitively() {
     let dependencies = ["/repo/App": ["/repo/Core"], "/repo/Core": ["/repo/Logger", "/repo/Core"], "/repo/Logger": []]
     #expect(ValidationDiscovery.productPackages(roots: ["/repo/App"], localDependencies: dependencies) == ["/repo/App", "/repo/Core", "/repo/Logger"])

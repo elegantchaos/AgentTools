@@ -265,6 +265,14 @@ final class ValidationTool {
     }
 
     let schemes = try listSchemes(container)
+    let schemeFiles = ValidationDiscovery.fingerprintFiles(repoPath: repoPath).filter { $0.hasSuffix(".xcscheme") }
+    func schemeFileHasTests(_ scheme: String) -> Bool {
+      guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }),
+        let contents = try? String(contentsOfFile: "\(repoPath)/\(file)", encoding: .utf8)
+      else { return false }
+      return XcodeSchemes.hasTests(schemeFile: contents)
+    }
+    let rootPackages = Set(ValidationDiscovery.rootPackages(container: container, repoPath: repoPath).map(ValidationPaths.canonical))
     let changedSubmodules = try changedSubmodulePaths()
     var packages: [LocalPackage] = []
     var descriptions: [String: SwiftPackageDescription] = [:]
@@ -295,7 +303,9 @@ final class ValidationTool {
           directory: packageDir,
           name: description.name,
           hasTests: description.hasTestTargets,
-          scheme: LocalPackage.scheme(for: description, in: schemes),
+          scheme: LocalPackage.scheme(for: description, in: schemes).flatMap { scheme in
+            rootPackages.contains(ValidationPaths.canonical(packageDir)) || schemeFileHasTests(scheme) ? scheme : nil
+          },
           submodule: submodule,
           submoduleChanged: submoduleChanged
         )
@@ -315,15 +325,7 @@ final class ValidationTool {
     }
 
     let productSchemes = try self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
-    let schemeFiles = ValidationDiscovery.fingerprintFiles(repoPath: repoPath).filter { $0.hasSuffix(".xcscheme") }
-    let schemesWithTests = Set(
-      productSchemes.filter { scheme in
-        guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }),
-          let contents = try? String(contentsOfFile: "\(repoPath)/\(file)", encoding: .utf8)
-        else { return false }
-        return XcodeSchemes.hasTests(schemeFile: contents)
-      }
-    )
+    let schemesWithTests = Set(productSchemes.filter(schemeFileHasTests))
 
     let buildPlatforms: [ApplePlatform]
     if !config.platforms.isEmpty {

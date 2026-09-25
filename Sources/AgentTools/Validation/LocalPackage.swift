@@ -11,7 +11,8 @@ struct LocalPackage: Equatable {
   let name: String
   /// Whether the package defines test targets.
   let hasTests: Bool
-  /// The scheme that tests the package in the root container, or `nil` when the container has none for it.
+  /// The scheme that tests the package in the root container, or `nil` when the container has none with a test action
+  /// for it.
   let scheme: String?
   /// The repository-relative path of the git submodule containing the package, or `nil` for packages in the repository.
   let submodule: String?
