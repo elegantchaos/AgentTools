@@ -11,4 +11,6 @@ enum ValidationStepStatus: String {
   case fail = "FAIL"
   /// The step was skipped.
   case skip = "SKIP"
+  /// The step was interrupted because a newer validation replaced this one.
+  case stopped = "STOP"
 }

@@ -20,6 +20,8 @@ struct ValidationProject {
   let testPlatforms: [ApplePlatform]
   /// The destination that runs tests on each platform; platforms without one have no available simulator.
   let testDestinations: [ApplePlatform: String]
+  /// Lines describing test simulators that are not a platform's test device on its newest OS.
+  var simulatorNotes: [String] = []
   /// Swift packages in the repository.
   let packages: [LocalPackage]
   /// Directories of packages in submodules that the submodule policy excluded before they were examined.

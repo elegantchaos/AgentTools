@@ -44,13 +44,12 @@ struct ValidationPlanTests {
       		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
       """
 
+    let simulators = XcodeDestinations.simulators(fromShowDestinations: output)
     #expect(
-      XcodeDestinations.testDestinations(fromShowDestinations: output) == [
-        .macOS: "platform=macOS",
+      simulators.mapValues(\.destination) == [
         .iOS: "platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0",
         .tvOS: "platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0",
-      ]
-    )
+      ])
   }
 
   @Test(arguments: [

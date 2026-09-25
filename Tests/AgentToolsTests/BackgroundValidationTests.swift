@@ -81,6 +81,17 @@ struct BackgroundValidationTests {
     #expect(Date.now.timeIntervalSince(started) < 5)
   }
 
+  @Test func anInterruptedStepIsRecordedAsStopped() throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let runner = StepRunner(repoPath: root.path, outputMode: .quiet)
+    runner.shouldStop = { true }
+    #expect(throws: (any Error).self) {
+      try runner.run(title: "Sleep", summary: "sleep", arguments: ["sleep", "30"], logPath: root.appendingPathComponent("sleep.log").path)
+    }
+    #expect(runner.summaryLines == ["STOP sleep"])
+  }
+
   @Test func onlyTheTokenHolderOwnsARunningValidation() {
     var status = BackgroundStatus(state: .running, pid: 1, fingerprint: "abc", started: .now, token: "mine")
     #expect(status.isOwned(byToken: "mine"))

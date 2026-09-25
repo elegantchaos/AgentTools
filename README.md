@@ -133,7 +133,7 @@ A local Swift package is part of the product when the product uses it: the works
 
 A package's tests run through the product's scheme for it when the workspace or project has one, sharing the product's build. Otherwise they run with SwiftPM on macOS, and on other platforms with `xcodebuild` in the package's own directory, using the scheme Xcode creates for the package; a package with no such scheme is reported as skipped on that platform.
 
-Tests on iOS, tvOS, watchOS, and visionOS run on a simulator: for each platform, the first one with the newest OS that Xcode offers for the product scheme. A platform without an available simulator is reported as skipped.
+Tests on iOS, tvOS, watchOS, and visionOS run on a simulator: the platform's test device for its newest installed runtime, named `Test <device> <version>`, such as `Test iPhone 27.2`. The devices are `iPhone` (or `iPad`), `TV`, `Watch`, and `Vision`. When the newest runtime has no test device, validation creates one and reports it, choosing the device the App Store asks screenshots for: the newest iPhone Pro Max, 13-inch iPad Pro, Apple TV 4K at 4K, or Apple Watch Ultra. If that fails, it reports why and uses a test device for an older runtime, or else the first simulator with the newest OS. A platform without an available simulator is reported as skipped.
 
 Xcode products build and test with `xcodebuild`. A Swift package product builds and tests with SwiftPM on macOS, because Xcode runs a package's build plugins only for its all-targets scheme, and with `xcodebuild` on other platforms. Either way, validation trusts package plugins and macros without Xcode's interactive prompt, as `swift build` does.
 
@@ -169,7 +169,7 @@ See what validation would do without running anything: every local package, with
 agt validate --plan
 ```
 
-Each run finishes with a PASS/FAIL/SKIP summary. Terminal output is shaped with `--output filtered|quiet|raw` (`filtered` is the default).
+Each run finishes with a PASS/FAIL/SKIP summary, and STOP for a step interrupted because a newer validation replaced this one. A step is marked `[warnings]` when a compiler or build tool reported a warning. Terminal output is shaped with `--output filtered|quiet|raw` (`filtered` is the default).
 
 Validation writes its build products and per-step logs under `.build/agt/` in the repository, so it never shares a build directory with an IDE or with your own builds. Downloads use SwiftPM's and Xcode's standard caches, so they are shared.
 

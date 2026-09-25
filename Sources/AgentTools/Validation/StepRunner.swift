@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Runs logged command steps, records PASS/FAIL/SKIP results, and prints the summary.
+/// Runs logged command steps, records PASS/FAIL/SKIP/STOP results, and prints the summary.
 final class StepRunner {
   /// Subprocess runner rooted at the repository.
   let process: ValidationProcess
@@ -27,7 +27,8 @@ final class StepRunner {
     self.planOnly = planOnly
   }
 
-  /// Runs one logged step, recording PASS or FAIL and throwing on failure.
+  /// Runs one logged step, recording PASS or FAIL and throwing on failure. A step that fails after `shouldStop` asked
+  /// it to stop is recorded as STOP instead.
   ///
   /// `display` replaces the arguments when echoing the command, for commands whose full argument list is too long to show.
   ///
@@ -54,6 +55,10 @@ final class StepRunner {
     let result = try process.runLogged(arguments, logPath: logPath, outputMode: outputMode, shouldStop: shouldStop)
 
     guard result.status == 0 else {
+      if shouldStop?() == true {
+        record(summary, status: .stopped, logPath: logPath)
+        throw ToolError("Stopped because a newer validation replaced this one: /usr/bin/env \(command)")
+      }
       if outputMode != .raw {
         for line in ValidationOutput.failureDiagnostics(result.output) {
           print(line)

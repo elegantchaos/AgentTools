@@ -39,6 +39,28 @@ enum ApplePlatform: String, Codable, CaseIterable {
     self == .macOS ? nil : "\(rawValue) Simulator"
   }
 
+  /// The device families of the simulators kept for testing on this platform, most preferred first. A test device
+  /// is named "Test", its family, and its OS version, such as `Test iPhone 27.2`.
+  var testDeviceFamilies: [String] {
+    switch self {
+      case .macOS: []
+      case .iOS: ["iPhone", "iPad"]
+      case .tvOS: ["TV"]
+      case .watchOS: ["Watch"]
+      case .visionOS: ["Vision"]
+    }
+  }
+
+  /// The names of this platform's test devices for OS version `os`, most preferred first.
+  func testDeviceNames(os: String) -> [String] {
+    testDeviceFamilies.map { "Test \($0) \(os)" }
+  }
+
+  /// Returns `true` when `name` is one of this platform's test devices, for any OS version.
+  func isTestDeviceName(_ name: String) -> Bool {
+    testDeviceFamilies.contains { name.hasPrefix("Test \($0) ") }
+  }
+
   /// Returns platforms with macOS first, where builds are fastest and tests need no simulator, keeping the
   /// others in order.
   static func hostFirst(_ platforms: [ApplePlatform]) -> [ApplePlatform] {

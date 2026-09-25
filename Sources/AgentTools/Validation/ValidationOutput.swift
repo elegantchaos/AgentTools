@@ -40,11 +40,24 @@ enum ValidationOutput {
     return visiblePatterns.contains(where: { trimmed.localizedCaseInsensitiveContains($0) }) ? trimmed : nil
   }
 
-  /// Returns `true` when the output contains a visible warning.
+  /// Returns `true` when the output contains a visible warning diagnostic.
   static func containsWarnings(_ output: String) -> Bool {
     output
       .split(whereSeparator: \.isNewline)
-      .contains { filteredLine(String($0))?.localizedCaseInsensitiveContains("warning:") == true }
+      .contains { filteredLine(String($0)).map(isWarningDiagnostic) == true }
+  }
+
+  /// Returns `true` when a line is a warning from a compiler or build tool: `warning:` starts the line or follows a
+  /// location (`File.swift:1:1: warning:`), a tool name (`ld: warning:`), or a process tag (`tool[1:2] warning:`).
+  ///
+  /// Test output that merely mentions `warning:`, such as a test argument, does not count, and neither does
+  /// `xcodebuild`'s upper-case `WARNING:` about choosing among matching destinations. Swift Testing's progress lines,
+  /// which quote test arguments, start with a symbol: an SF Symbol from the private use planes, or `◇`, `✔`, `✘`, or `↳`.
+  private static func isWarningDiagnostic(_ line: String) -> Bool {
+    if let first = line.unicodeScalars.first, first.value >= 0xF0000 || "◇✔✘↳".unicodeScalars.contains(first) {
+      return false
+    }
+    return line.hasPrefix("warning: ") || line.contains(": warning: ") || line.contains("] warning: ")
   }
 
   /// Extracts the first error block, with its leading notes and warnings, from failed step output.

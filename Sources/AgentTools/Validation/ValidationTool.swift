@@ -226,6 +226,9 @@ final class ValidationTool {
     }
 
     let discovered = try discoverProject(container: container, packageDirs: packageDirs, paths: paths)
+    for note in discovered.simulatorNotes {
+      print(note)
+    }
     if config.planOnly {
       print("== Packages")
       let summaries = ValidationPlan.packageSummaries(
@@ -343,7 +346,8 @@ final class ValidationTool {
     }
     let testPlatforms = config.testPlatforms.isEmpty ? buildPlatforms : config.testPlatforms
     let needsSimulators = testPlatforms.contains { $0 != .macOS }
-    let testDestinations = try needsSimulators ? self.testDestinations(container: container, scheme: productSchemes[0], platforms: testPlatforms, paths: paths) : [.macOS: "platform=macOS"]
+    let simulators = try needsSimulators ? self.simulators(container: container, scheme: productSchemes[0], platforms: testPlatforms, paths: paths) : [:]
+    let testDestinations = simulators.mapValues(\.destination).merging([.macOS: "platform=macOS"]) { current, _ in current }
 
     if needsSimulators {
       for index in packages.indices where packages[index].inProduct && packages[index].hasTests && packages[index].scheme == nil {
@@ -360,6 +364,7 @@ final class ValidationTool {
       buildPlatforms: buildPlatforms,
       testPlatforms: testPlatforms,
       testDestinations: testDestinations,
+      simulatorNotes: testPlatforms.compactMap { simulators[$0]?.note },
       packages: packages,
       unexaminedSubmodulePackages: unexamined
     )
@@ -544,23 +549,54 @@ final class ValidationTool {
     }
   }
 
-  /// Returns a test destination for each platform, choosing simulators from those available to a scheme.
+  /// Returns the simulator that runs tests on each simulator platform, choosing from those available to a scheme.
   ///
-  /// Xcode can list destinations before it has loaded its simulators, so a list missing any of `platforms` is retried
-  /// once and never cached.
-  private func testDestinations(container: [String], scheme: String, platforms: [ApplePlatform], paths: ValidationPaths) throws -> [ApplePlatform: String] {
-    let isComplete = { (destinations: [ApplePlatform: String]) in platforms.allSatisfy { destinations[$0] != nil } }
-    return try discovered("testDestinations \(container.joined(separator: " ")) \(scheme)", isComplete: isComplete) {
-      var destinations: [ApplePlatform: String] = [:]
-      for _ in 1...2 where !isComplete(destinations) {
-        let result = try process.capture(XcodeDestinations.showDestinationsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
-        guard result.status == 0 else {
-          throw ToolError("Failed to list destinations for scheme '\(scheme)':\n\(result.stderr)")
+  /// When a platform has no test device for its newest installed runtime, one is created, and the destinations are
+  /// listed again. Xcode can list destinations before it has loaded its simulators, so a list missing any of
+  /// `platforms` is retried once and never cached.
+  private func simulators(container: [String], scheme: String, platforms: [ApplePlatform], paths: ValidationPaths) throws -> [ApplePlatform: SimulatorChoice] {
+    let simulatorPlatforms = platforms.filter { $0 != .macOS }
+    let isComplete = { (simulators: [ApplePlatform: SimulatorChoice]) in simulatorPlatforms.allSatisfy { simulators[$0] != nil } }
+    return try discovered("simulators \(container.joined(separator: " ")) \(scheme)", isComplete: isComplete) {
+      let runtimes = try process.capture(["xcrun", "simctl", "list", "-j", "runtimes"])
+      let newestOS = runtimes.status == 0 ? (try? TestSimulators.newestOS(runtimesJSON: runtimes.stdout)) ?? [:] : [:]
+      func list() throws -> [ApplePlatform: SimulatorChoice] {
+        var simulators: [ApplePlatform: SimulatorChoice] = [:]
+        for _ in 1...2 where !isComplete(simulators) {
+          let result = try process.capture(XcodeDestinations.showDestinationsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
+          guard result.status == 0 else {
+            throw ToolError("Failed to list destinations for scheme '\(scheme)':\n\(result.stderr)")
+          }
+          simulators = XcodeDestinations.simulators(fromShowDestinations: result.stdout, newestOS: newestOS)
         }
-        destinations = XcodeDestinations.testDestinations(fromShowDestinations: result.stdout)
+        return simulators
       }
-      return destinations
+
+      let simulators = try list()
+      let missing = TestSimulators.missingTestDevices(for: simulatorPlatforms, in: simulators)
+      guard !missing.isEmpty, runtimes.status == 0 else { return simulators }
+      var created = false
+      for platform in missing {
+        created = try createTestDevice(for: platform, runtimesJSON: runtimes.stdout) || created
+      }
+      return created ? try list() : simulators
     }
+  }
+
+  /// Creates the test device for `platform`'s newest runtime, returning `true` when it was created. Failures are
+  /// reported, and validation continues with the simulators that exist.
+  private func createTestDevice(for platform: ApplePlatform, runtimesJSON: String) throws -> Bool {
+    let devices = try process.capture(["xcrun", "simctl", "list", "-j", "devices"])
+    guard devices.status == 0, let device = try? TestSimulators.newDevice(for: platform, runtimesJSON: runtimesJSON, devicesJSON: devices.stdout) else {
+      return false
+    }
+    let result = try process.capture(device.arguments)
+    guard result.status == 0 else {
+      print("Could not create simulator \(device.name) (\(device.deviceTypeName), \(device.runtimeName)): \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+      return false
+    }
+    print("Created simulator \(device.name) (\(device.deviceTypeName), \(device.runtimeName)) for \(platform.rawValue) tests.")
+    return true
   }
 
   /// Reads a package's targets and products with `swift package describe`.

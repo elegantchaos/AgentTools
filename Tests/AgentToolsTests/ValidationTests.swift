@@ -271,6 +271,21 @@ struct ValidationTests {
     #expect(ValidationOutput.containsWarnings("Compiling\nBUILD SUCCEEDED\n") == false)
   }
 
+  @Test(arguments: [
+    ("/tmp/A.swift:1:1: warning: unused", true),
+    ("warning: 'core': found 1 file(s) which are unhandled", true),
+    ("ld: warning: object file was built for a newer macOS version", true),
+    ("2026-09-25 appintentsmetadataprocessor[1:2] warning: Metadata extraction skipped.", true),
+    ("􀟈  Test case passing 2 arguments line → \"warning: deprecated API\" started.", false),
+    ("􀟈  Test warningDetection() started.", false),
+    ("􀟈  Test case passing 2 arguments line → \"/tmp/A.swift:1:1: warning: unused\", expected → true started.", false),
+    ("◇ Test case passing 1 argument line → \"ld: warning: old\" started.", false),
+    ("--- xcodebuild: WARNING: Using the first of multiple matching destinations:", false),
+  ])
+  func onlyDiagnosticWarningsCount(line: String, expected: Bool) {
+    #expect(ValidationOutput.containsWarnings(line) == expected)
+  }
+
   @Test func extractedFailureDiagnosticsPreferErrorBlock() {
     let output = """
       CompileSwift normal arm64 One.swift

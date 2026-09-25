@@ -1,5 +1,11 @@
 # Release Notes
 
+## 3.7.0
+
+- Tests on simulators use the platform's test device for its newest installed runtime, named `Test <device> <version>`: `Test iPhone 27.2` (or `Test iPad 27.2`), `Test TV 27.0`, `Test Watch 27.0`, or `Test Vision …`. When the newest runtime has none, validation creates one, of the device the App Store asks screenshots for (the newest iPhone Pro Max, 13-inch iPad Pro, Apple TV 4K at 4K, or Apple Watch Ultra), and reports it. Previously it used the first simulator with the newest OS, which could be an iPad.
+- A step interrupted because a newer validation replaced this one is recorded as STOP, not FAIL.
+- Only warnings from compilers and build tools mark a step `[warnings]`: `warning:` at the start of a line, or after a location, a tool name, or a process tag. Swift Testing progress lines, which quote test arguments, and `xcodebuild`'s note about choosing among matching destinations, no longer do.
+
 ## 3.6.0
 
 - Adds `agt validate --background`, which runs full validation as a detached process, after the fast phase with `--fast`, and returns. `agt validate --status` reports the latest result; `agt validate --wait` waits for it and fails unless full validation passed for the current working tree.
