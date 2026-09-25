@@ -19,6 +19,12 @@ let package = Package(
     .executableTarget(
       name: "AgentTools",
       dependencies: [
+        "AgentToolsCore"
+      ]
+    ),
+    .target(
+      name: "AgentToolsCore",
+      dependencies: [
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
         .product(name: "Configuration", package: "swift-configuration"),
       ],
@@ -29,7 +35,7 @@ let package = Package(
     .testTarget(
       name: "AgentToolsTests",
       dependencies: [
-        "AgentTools"
+        "AgentToolsCore"
       ]
     ),
   ]

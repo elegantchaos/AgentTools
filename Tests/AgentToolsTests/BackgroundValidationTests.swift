@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests the working-tree fingerprint, the background status record, and the background options.
 struct BackgroundValidationTests {

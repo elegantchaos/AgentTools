@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests how validation chooses, describes, and creates the simulators that run tests.
 struct TestSimulatorTests {

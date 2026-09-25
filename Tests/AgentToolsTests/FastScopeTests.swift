@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests how the fast phase finds what a change touched and what to build and test.
 struct FastScopeTests {

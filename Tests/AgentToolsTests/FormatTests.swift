@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests file selection, arguments, and option parsing used by `agt format`.
 struct FormatTests {

@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests for repository root detection in different runtime layouts.
 struct RepoRootLocatorTests {

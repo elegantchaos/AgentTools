@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests the cached discovery results used by `agt validate`.
 struct DiscoveryCacheTests {

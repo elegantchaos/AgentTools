@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests linking discovered skills into runtime skill directories.
 struct SkillsPublicToolTests {

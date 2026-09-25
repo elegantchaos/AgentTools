@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests reading validation settings from `.agt/config.json` and `.agt/local/config.json`.
 struct ProjectConfigurationTests {

@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests one-way synchronization from shared rules to runtime copies.
 struct RulesPublicToolTests {

@@ -5,7 +5,7 @@
 
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests the version reported by `agt --version`.
 struct ToolVersionTests {

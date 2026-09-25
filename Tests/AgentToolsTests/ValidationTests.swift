@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests option parsing, package discovery, and output shaping used by `agt validate`.
 struct ValidationTests {

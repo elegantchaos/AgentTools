@@ -6,7 +6,7 @@
 import Foundation
 import Testing
 
-@testable import AgentTools
+@testable import AgentToolsCore
 
 /// Tests how full validation chooses what to build and test.
 struct ValidationPlanTests {

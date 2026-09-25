@@ -5,13 +5,14 @@
 
 import ArgumentParser
 
-/// Entry point for shared agent maintenance and repository validation commands.
+/// Root command for shared agent maintenance and repository validation commands.
 ///
 /// Handles the `--version` flag, or shows the help when no subcommand is given.
-@main
-struct AgentTools: AsyncParsableCommand {
+/// The `agt` executable runs it from its `@main` entry point, which stays outside this library so that
+/// tests never link an executable's `main`.
+public struct AgentToolsCommand: AsyncParsableCommand {
   /// Top-level command configuration.
-  static let configuration = CommandConfiguration(
+  public static let configuration = CommandConfiguration(
     commandName: "agt",
     abstract: "Maintenance and validation tools for agent-driven development.",
     subcommands: [
@@ -26,8 +27,11 @@ struct AgentTools: AsyncParsableCommand {
   @Flag(help: "Show the version.")
   var version = false
 
+  /// Creates the command with its default options.
+  public init() {}
+
   /// Prints the version, or the help when no subcommand is given.
-  mutating func run() async throws {
+  public mutating func run() async throws {
     guard version else { throw CleanExit.helpRequest(self) }
     print(ToolVersion.current)
   }
