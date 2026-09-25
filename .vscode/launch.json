@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:AgentTools}",
+      "name": "Debug agt",
+      "target": "agt",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug agt"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:AgentTools}",
+      "name": "Release agt",
+      "target": "agt",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release agt"
+    }
+  ]
+}
