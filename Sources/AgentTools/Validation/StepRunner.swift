@@ -17,6 +17,8 @@ final class StepRunner {
   private var steps: [ValidationStepRecord] = []
   /// Commands listed so far in plan mode, in order.
   private(set) var plannedCommands: [[String]] = []
+  /// Checked while a step runs; when it returns `true`, the step's command is interrupted.
+  var shouldStop: (() -> Bool)?
 
   /// Creates a runner for commands in `repoPath`; with `planOnly`, steps are listed instead of run.
   init(repoPath: String, outputMode: ValidateOutputMode, planOnly: Bool = false) {
@@ -49,7 +51,7 @@ final class StepRunner {
     if let workingDirectory {
       print("  in \(workingDirectory)")
     }
-    let result = try process.runLogged(arguments, logPath: logPath, outputMode: outputMode)
+    let result = try process.runLogged(arguments, logPath: logPath, outputMode: outputMode, shouldStop: shouldStop)
 
     guard result.status == 0 else {
       if outputMode != .raw {
@@ -90,7 +92,14 @@ final class StepRunner {
     }
     guard !steps.isEmpty else { return }
     print("== Summary")
-    for step in steps {
+    for line in summaryLines {
+      print(line)
+    }
+  }
+
+  /// One line per recorded step, with log paths for failures.
+  var summaryLines: [String] {
+    steps.map { step in
       var line = "\(step.status.rawValue) \(step.summary)"
       if step.warningsPresent {
         line += " [warnings]"
@@ -98,7 +107,7 @@ final class StepRunner {
       if step.status == .fail, let logPath = step.logPath {
         line += " -> \(logPath)"
       }
-      print(line)
+      return line
     }
   }
 }

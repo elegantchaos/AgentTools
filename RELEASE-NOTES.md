@@ -1,5 +1,12 @@
 # Release Notes
 
+## 3.6.0
+
+- Adds `agt validate --background`, which runs full validation as a detached process, after the fast phase with `--fast`, and returns. `agt validate --status` reports the latest result; `agt validate --wait` waits for it and fails unless full validation passed for the current working tree.
+- Background results record a fingerprint of the working tree, including untracked files: a result is stale if the tree changed while it ran, and a pass for the current tree is reused instead of running again.
+- A new validation stops any background validation that is still running, so the two never compete for build directories: the running one notices within a second, interrupts its current command, and exits.
+- `agt validate --clean` keeps the background status.
+
 ## 3.5.0
 
 - Adds `agt validate --fast`, which builds only what the uncommitted changes touched, for macOS, and runs the tests that depend on it: changed package targets build with SwiftPM and run the package's test targets that depend on them, changed manifests and submodules build and test their whole package, and other build inputs build the product scheme with `xcodebuild`. `--plan` shows where each changed file was assigned.

@@ -18,13 +18,20 @@ struct ValidationPaths {
   var logRoot: String { "\(root)/logs" }
   /// Private DerivedData directory for Xcode validation.
   var derivedDataPath: String { "\(root)/DerivedData" }
+  /// State and output of background validation.
+  var backgroundDirectory: String { "\(root)/background" }
 
   /// Resolves the locations for a repository, optionally clearing previous output, and creates them.
+  ///
+  /// Clearing keeps the background validation's state and output, which a running background validation owns.
   static func prepare(repoPath: String, clean: Bool) throws -> ValidationPaths {
     let paths = ValidationPaths(repoPath: repoPath)
     let fileManager = FileManager.default
     if clean {
-      try? fileManager.removeItem(atPath: paths.root)
+      let kept = URL(fileURLWithPath: paths.backgroundDirectory).lastPathComponent
+      for item in (try? fileManager.contentsOfDirectory(atPath: paths.root)) ?? [] where item != kept {
+        try? fileManager.removeItem(atPath: "\(paths.root)/\(item)")
+      }
     }
     for directory in [paths.logRoot, paths.derivedDataPath] {
       try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)

@@ -31,6 +31,22 @@ struct ValidateCommand: AsyncParsableCommand {
   @Flag(help: "Build only what the uncommitted changes touched, for macOS, and run the tests that depend on it.")
   var fast = false
 
+  /// Whether to run full validation in the background.
+  @Flag(help: "Run full validation in the background and return; with --fast, only after the fast phase passes. Replaces any background validation still running.")
+  var background = false
+
+  /// Whether to report the background validation.
+  @Flag(help: "Report the state of the background validation, and whether its result applies to the current working tree.")
+  var status = false
+
+  /// Whether to wait for the background validation.
+  @Flag(help: "Wait for the background validation to finish and report it; fails unless it passed for the current working tree.")
+  var wait = false
+
+  /// Whether this process is a background validation started by `--background`.
+  @Flag(help: .hidden)
+  var backgroundWorker = false
+
   /// Target for the fast phase.
   @Option(help: "Run the fast phase for this target instead of the changes: build it and run the test targets that depend on it, or build the Xcode scheme of this name when no package defines it.")
   var target: String?
@@ -99,6 +115,10 @@ struct ValidateCommand: AsyncParsableCommand {
     return ValidationConfig(
       clean: clean,
       fast: fast,
+      background: background,
+      status: status,
+      wait: wait,
+      backgroundWorker: backgroundWorker,
       target: target,
       workspaceOverride: workspace,
       projectOverride: project,

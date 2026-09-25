@@ -10,9 +10,12 @@ struct ValidationProcess {
   /// Directory that commands run in.
   let workingDirectory: String
 
-  /// Runs a command to completion and captures its separate output streams.
-  func capture(_ arguments: [String]) throws -> CommandResult {
+  /// Runs a command to completion and captures its separate output streams, adding `environment` to the inherited one.
+  func capture(_ arguments: [String], environment: [String: String] = [:]) throws -> CommandResult {
     let process = makeProcess(arguments)
+    if !environment.isEmpty {
+      process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+    }
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()
     process.standardOutput = stdoutPipe
@@ -31,7 +34,11 @@ struct ValidationProcess {
   }
 
   /// Runs a command with merged output written to a log, streaming it to the terminal according to the output mode.
-  func runLogged(_ arguments: [String], logPath: String, outputMode: ValidateOutputMode) throws -> ValidationCommandResult {
+  ///
+  /// While it runs, `shouldStop` is checked about twice a second; when it returns `true`, the command is interrupted
+  /// as if by Control-C, so tools such as `xcodebuild` can stop cleanly, and terminated if it has not exited ten
+  /// seconds later.
+  func runLogged(_ arguments: [String], logPath: String, outputMode: ValidateOutputMode, shouldStop: (() -> Bool)? = nil) throws -> ValidationCommandResult {
     let process = makeProcess(arguments)
     let outputPipe = Pipe()
     process.standardOutput = outputPipe
@@ -75,6 +82,20 @@ struct ValidationProcess {
     }
 
     try process.run()
+    var ticks = 0
+    var interrupted: Date?
+    while process.isRunning {
+      usleep(100_000)
+      ticks += 1
+      if let interrupted {
+        if Date.now.timeIntervalSince(interrupted) > 10 {
+          process.terminate()
+        }
+      } else if ticks % 5 == 0, shouldStop?() == true {
+        process.interrupt()
+        interrupted = .now
+      }
+    }
     process.waitUntilExit()
     group.wait()
     readHandle.readabilityHandler = nil

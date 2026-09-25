@@ -9,6 +9,14 @@ struct ValidationConfig {
   let clean: Bool
   /// Whether to run the fast phase for uncommitted changes instead of full validation.
   let fast: Bool
+  /// Whether to run full validation in the background, after the fast phase when `fast` is set.
+  let background: Bool
+  /// Whether to report the background validation.
+  let status: Bool
+  /// Whether to wait for the background validation.
+  let wait: Bool
+  /// Whether this process is a background validation.
+  let backgroundWorker: Bool
   /// A target to run the fast phase for, instead of the changes.
   let target: String?
   /// Explicit workspace path.

@@ -234,7 +234,8 @@ struct ValidationTests {
 
     let staleURL = repoURL.appendingPathComponent(".build/agt/logs/stale.log")
     let userBuildURL = repoURL.appendingPathComponent(".build/debug/keep")
-    for url in [staleURL, userBuildURL] {
+    let backgroundURL = repoURL.appendingPathComponent(".build/agt/background/status.json")
+    for url in [staleURL, userBuildURL, backgroundURL] {
       try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       try "old".write(to: url, atomically: true, encoding: .utf8)
     }
@@ -245,6 +246,7 @@ struct ValidationTests {
     #expect(FileManager.default.fileExists(atPath: paths.logRoot))
     #expect(!FileManager.default.fileExists(atPath: staleURL.path))
     #expect(FileManager.default.fileExists(atPath: userBuildURL.path))
+    #expect(FileManager.default.fileExists(atPath: backgroundURL.path))
   }
 
   @Test func logPathsAreSanitized() {

@@ -105,6 +105,21 @@ The fast phase finds the smallest scope that covers the uncommitted changes, inc
 
 `agt validate --fast --plan` shows where each changed file was assigned, and the steps.
 
+#### Full validation in the background
+
+Full validation can take minutes, so it can run in the background while work continues:
+
+```shell
+agt validate --fast --background
+agt validate --wait
+```
+
+`--background` starts full validation as a detached process and returns immediately; with `--fast`, it starts once the fast phase passes. `agt validate --status` reports the latest result, and `agt validate --wait` waits for a running validation to finish, then fails unless full validation passed for the current working tree. Output goes to `.build/agt/background/output.log`.
+
+Each result records a fingerprint of the working tree, including untracked files, so a result is only trusted for the tree it checked. If the tree changes while validation runs, the result is marked stale. Starting background validation when it has already passed for the current tree does nothing.
+
+Only one validation runs at a time, since they share build directories. Any new run, background or foreground, replaces the marker that a running background validation checks, and that validation stops itself at its next check, interrupting its current command. If it has not stopped within 30 seconds, it is killed.
+
 #### What full validation covers
 
 Full validation builds the product first, then tests it:

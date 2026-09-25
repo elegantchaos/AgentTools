@@ -41,7 +41,13 @@ final class ValidationTool {
   /// Subprocess runner rooted at the repository.
   private var process: ValidationProcess { runner.process }
 
-  /// Runs targeted or full validation, printing the summary whether or not it succeeds.
+  /// State and output of background validation.
+  private var backgroundStore: BackgroundStatusStore {
+    BackgroundStatusStore(directory: ValidationPaths(repoPath: repoPath).backgroundDirectory)
+  }
+
+  /// Runs the requested validation: reports or waits for background validation, runs as a background worker, starts
+  /// background validation, or validates in the foreground, stopping any background validation first.
   func run() throws {
     // Line-buffer output, so progress and errors appear in order and promptly when output goes to a pipe or file.
     setvbuf(stdout, nil, _IOLBF, 0)
@@ -49,6 +55,148 @@ final class ValidationTool {
       throw ToolError("Current working directory is not a git repo root: \(repoPath)")
     }
 
+    if config.status {
+      try reportBackground(waiting: false)
+    } else if config.wait {
+      try reportBackground(waiting: true)
+    } else if config.backgroundWorker {
+      try runWorker()
+    } else if config.background, !config.fast, config.target == nil, !config.planOnly {
+      try startBackground()
+    } else {
+      if !config.planOnly, BackgroundLauncher.supersede(store: backgroundStore) {
+        print("Stopped the background validation that was running, so they do not compete for build directories.")
+      }
+      try validate()
+      if config.background, !config.planOnly {
+        try startBackground()
+      }
+    }
+  }
+
+  /// Starts full validation in the background, unless the last one passed for the current working tree.
+  private func startBackground() throws {
+    let fingerprint = try WorkingTreeFingerprint.current(using: process)
+    if let last = backgroundStore.load(), last.isCurrentPass(currentFingerprint: fingerprint) {
+      print("Full validation already passed for this working tree; not running it again.")
+      return
+    }
+    if BackgroundLauncher.supersede(store: backgroundStore) {
+      print("Stopped the previous background validation.")
+    }
+    let status = try BackgroundLauncher.start(repoPath: repoPath, fingerprint: fingerprint, store: backgroundStore)
+    print("Full validation started in the background (process \(status.pid)).")
+    print("Check it with `agt validate --status`, or wait for it with `agt validate --wait`. Output: \(backgroundStore.logPath)")
+  }
+
+  /// Runs full validation as a background worker, recording the result unless a newer validation has replaced it.
+  ///
+  /// The worker leads its own process group, so stopping it stops the tools it runs, and ignores the hang-up signal
+  /// sent when the terminal that started it closes.
+  private func runWorker() throws {
+    setpgid(0, 0)
+    signal(SIGHUP, SIG_IGN)
+    let store = backgroundStore
+    guard ownsBackgroundStatus() else {
+      print("A newer validation replaced this one before it started.")
+      return
+    }
+    let startFingerprint = try WorkingTreeFingerprint.current(using: process)
+    var status = BackgroundStatus(state: .running, pid: getpid(), fingerprint: startFingerprint, started: .now, token: workerToken)
+    try store.save(status)
+    runner.shouldStop = { [unowned self] in !self.ownsBackgroundStatus() }
+
+    var passed = false
+    do {
+      try validate()
+      passed = true
+    } catch is Superseded {
+      print("A newer validation replaced this one.")
+      return
+    } catch {
+      print("Error: \(error)")
+    }
+
+    guard ownsBackgroundStatus() else {
+      print("A newer validation replaced this one; not recording its result.")
+      return
+    }
+    let endFingerprint = try WorkingTreeFingerprint.current(using: process)
+    status.state = endFingerprint != startFingerprint ? .stale : passed ? .passed : .failed
+    status.finished = .now
+    status.steps = runner.summaryLines
+    try store.save(status)
+  }
+
+  /// Runs one planned step. A step that fails because a newer validation interrupted it throws `Superseded`.
+  private func runStep(_ step: PlannedStep, paths: ValidationPaths) throws {
+    do {
+      try runner.run(
+        title: step.title,
+        summary: step.summary,
+        arguments: step.arguments,
+        workingDirectory: step.workingDirectory,
+        logPath: paths.logPath(step.logName)
+      )
+    } catch {
+      try checkNotSuperseded()
+      throw error
+    }
+  }
+
+  /// Thrown when a newer background validation has replaced this one.
+  private struct Superseded: Error {}
+
+  /// The token that identifies this process when it is a background worker.
+  private var workerToken: String {
+    ProcessInfo.processInfo.environment[BackgroundLauncher.tokenVariable] ?? ""
+  }
+
+  /// Returns `true` unless this process is a background worker that a newer validation has replaced or cancelled.
+  private func ownsBackgroundStatus() -> Bool {
+    guard config.backgroundWorker else { return true }
+    return backgroundStore.load()?.isOwned(byToken: workerToken) ?? false
+  }
+
+  /// Throws `Superseded` when a newer background validation has replaced this worker.
+  private func checkNotSuperseded() throws {
+    if !ownsBackgroundStatus() {
+      throw Superseded()
+    }
+  }
+
+  /// Reports the background validation, first waiting for it to finish when `waiting`. When waiting, fails unless it
+  /// passed for the current working tree.
+  private func reportBackground(waiting: Bool) throws {
+    let store = backgroundStore
+    guard var status = store.load() else {
+      if waiting {
+        throw ToolError("No background validation has run. Start one with `agt validate --background`, or run `agt validate`.")
+      }
+      print("No background validation has run.")
+      return
+    }
+    while waiting, status.state == .running, BackgroundLauncher.isAlive(status.pid) {
+      sleep(2)
+      status = store.load() ?? status
+    }
+    if status.state == .running, !BackgroundLauncher.isAlive(status.pid) {
+      status.state = .cancelled
+    }
+
+    let fingerprint = try WorkingTreeFingerprint.current(using: process)
+    print(status.headline(currentFingerprint: fingerprint))
+    for line in status.steps {
+      print(line)
+    }
+    print("Output: \(store.logPath)")
+    if waiting, !status.isCurrentPass(currentFingerprint: fingerprint) {
+      throw ToolError("Full validation did not pass for the current working tree.")
+    }
+  }
+
+  /// Runs the fast phase or full validation in this process, printing the summary whether or not it succeeds.
+  private func validate() throws {
     defer { runner.printSummary() }
 
     let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: config.clean)
@@ -101,16 +249,11 @@ final class ValidationTool {
       quiet: config.outputMode != .raw
     )
     for step in steps {
+      try checkNotSuperseded()
       if step.skipped {
         runner.record(step.summary, status: .skip)
       } else {
-        try runner.run(
-          title: step.title,
-          summary: step.summary,
-          arguments: step.arguments,
-          workingDirectory: step.workingDirectory,
-          logPath: paths.logPath(step.logName)
-        )
+        try runStep(step, paths: paths)
       }
     }
   }
@@ -335,7 +478,8 @@ final class ValidationTool {
       steps.append(PlannedStep(title: "Build \(name) for macOS", summary: "build \(name) (macOS)", arguments: arguments, logName: "fast_build_\(name)_macOS"))
     }
     for step in steps {
-      try runner.run(title: step.title, summary: step.summary, arguments: step.arguments, workingDirectory: step.workingDirectory, logPath: paths.logPath(step.logName))
+      try checkNotSuperseded()
+      try runStep(step, paths: paths)
     }
   }
 
