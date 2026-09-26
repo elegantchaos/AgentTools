@@ -25,3 +25,43 @@ jobs:
 
       - name: Test
         run: swift test --configuration release
+
+  xcode-27-build:
+    name: Xcode 27
+    runs-on: xcode-27
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build release
+        run: swift build --configuration release
+
+      - name: Test
+        run: swift test --configuration release
+
+      - name: Upload agt
+        uses: actions/upload-artifact@v4
+        with:
+          name: agt-xcode-27
+          path: .build/release/agt
+          if-no-files-found: error
+
+  # The xcode-27 runner is macOS 27, so an Xcode 27 build that links a symbol
+  # missing from macOS 26's Swift runtime only fails when run on macOS 26.
+  xcode-27-run-on-macos-26:
+    name: Xcode 27 build on macOS 26
+    needs: xcode-27-build
+    runs-on: macos-26
+    steps:
+      - name: Download agt
+        uses: actions/download-artifact@v4
+        with:
+          name: agt-xcode-27
+
+      - name: Run agt
+        run: |
+          chmod +x agt
+          ./agt --version
