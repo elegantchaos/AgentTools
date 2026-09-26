@@ -11,8 +11,11 @@ let package = Package(
     .executable(name: "agt", targets: ["AgentTools"])
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.7.0"),
-    .package(url: "https://github.com/apple/swift-configuration", from: "1.2.0"),
+    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.7.1"),
+    // swift-collections is only used indirectly (through swift-configuration), but
+    // 1.7.0 built with Swift 6.4 links `swift_initBorrow`, which is missing before macOS 27.
+    .package(url: "https://github.com/apple/swift-collections", from: "1.7.1"),
+    .package(url: "https://github.com/apple/swift-configuration", from: "1.2.1"),
     .package(url: "https://github.com/elegantchaos/Versionator.git", from: "2.1.1"),
   ],
   targets: [
