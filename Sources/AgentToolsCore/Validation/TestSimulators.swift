@@ -9,6 +9,8 @@ import Foundation
 struct SimulatorChoice: Codable, Equatable {
   /// The simulator's platform.
   let platform: ApplePlatform
+  /// The simulator's CoreSimulator identifier.
+  let id: String
   /// The simulator's name.
   let name: String
   /// The simulator's OS version.
@@ -23,7 +25,7 @@ struct SimulatorChoice: Codable, Equatable {
 
   /// The `xcodebuild` destination that runs tests on this simulator.
   var destination: String {
-    "platform=\(platform.simulatorName ?? platform.rawValue),name=\(name),OS=\(os)"
+    "platform=\(platform.simulatorName ?? platform.rawValue),id=\(id)"
   }
 
   /// A line for the validation output when the simulator is not a test device for the newest OS, or `nil` when it is.
@@ -97,6 +99,8 @@ enum TestSimulators {
     struct Device: Decodable {
       /// The simulator's name.
       let name: String
+      /// The simulator's CoreSimulator identifier, when the device list includes it.
+      let udid: String?
     }
 
     /// Simulators, by runtime identifier.
@@ -152,6 +156,12 @@ enum TestSimulators {
   /// Returns the simulator platforms among `platforms` whose chosen simulator is not a test device for the newest OS.
   static func missingTestDevices(for platforms: [ApplePlatform], in simulators: [ApplePlatform: SimulatorChoice]) -> [ApplePlatform] {
     platforms.filter { platform in simulators[platform].map { !$0.isTestDevice } ?? false }
+  }
+
+  /// Returns current simulator identifiers so a cached Xcode destination can be rejected after device recreation.
+  static func deviceIDs(devicesJSON: String) throws -> Set<String> {
+    let devices = try JSONDecoder().decode(DeviceList.self, from: Data(devicesJSON.utf8))
+    return Set(devices.devices.values.joined().compactMap(\.udid))
   }
 
   /// Returns the OS version of each platform's newest available runtime.

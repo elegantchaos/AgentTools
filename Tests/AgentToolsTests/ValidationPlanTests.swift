@@ -47,8 +47,8 @@ struct ValidationPlanTests {
     let simulators = XcodeDestinations.simulators(fromShowDestinations: output)
     #expect(
       simulators.mapValues(\.destination) == [
-        .iOS: "platform=iOS Simulator,name=iPhone 18 Pro,OS=27.0",
-        .tvOS: "platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0",
+        .iOS: "platform=iOS Simulator,id=B",
+        .tvOS: "platform=tvOS Simulator,id=D",
       ])
   }
 

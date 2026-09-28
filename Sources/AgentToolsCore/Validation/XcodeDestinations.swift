@@ -46,16 +46,15 @@ enum XcodeDestinations {
   ///
   /// The platform's test device for its newest OS is preferred: `newestOS` gives the newest installed runtime, and
   /// defaults to the newest OS among the destinations. Without one, a test device for an older OS is used, then the
-  /// first simulator with the newest OS. Destinations name the device and OS, so they survive simulators being
-  /// recreated.
+  /// first simulator with the newest OS. The chosen device's identifier selects it exactly for testing and booting.
   static func simulators(fromShowDestinations output: String, newestOS: [ApplePlatform: String] = [:]) -> [ApplePlatform: SimulatorChoice] {
-    var available: [ApplePlatform: [(name: String, os: String)]] = [:]
+    var available: [ApplePlatform: [(id: String, name: String, os: String)]] = [:]
     for line in output.split(separator: "\n") {
       let fields = destinationFields(String(line))
-      guard let platformName = fields["platform"], let os = fields["OS"], let name = fields["name"],
+      guard let platformName = fields["platform"], let id = fields["id"], let os = fields["OS"], let name = fields["name"],
         let platform = ApplePlatform.allCases.first(where: { $0.simulatorName == platformName })
       else { continue }
-      available[platform, default: []].append((name, os))
+      available[platform, default: []].append((id, name, os))
     }
 
     var chosen: [ApplePlatform: SimulatorChoice] = [:]
@@ -66,13 +65,13 @@ enum XcodeDestinations {
         wanted.lazy.compactMap { name in newest(simulators.filter { $0.name == name }) }.first
         ?? newest(simulators.filter { platform.isTestDeviceName($0.name) })
         ?? newestAvailable
-      chosen[platform] = SimulatorChoice(platform: platform, name: simulator.name, os: simulator.os, testDeviceNames: wanted)
+      chosen[platform] = SimulatorChoice(platform: platform, id: simulator.id, name: simulator.name, os: simulator.os, testDeviceNames: wanted)
     }
     return chosen
   }
 
   /// Returns the first of `simulators` with the newest OS.
-  private static func newest(_ simulators: [(name: String, os: String)]) -> (name: String, os: String)? {
+  private static func newest(_ simulators: [(id: String, name: String, os: String)]) -> (id: String, name: String, os: String)? {
     simulators.reduce(nil) { best, candidate in
       best.map { TestSimulators.version($0.os).lexicographicallyPrecedes(TestSimulators.version(candidate.os)) ? candidate : $0 } ?? candidate
     }

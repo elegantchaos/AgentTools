@@ -251,13 +251,54 @@ final class ValidationTool {
       disableSwiftPMSandbox: config.swiftPMDisableSandbox || sandbox.isNested,
       quiet: config.outputMode != .raw
     )
+    var pendingSimulators = config.planOnly ? [:] : startTestSimulators(project: discovered, steps: steps)
     for step in steps {
       try checkNotSuperseded()
       if step.skipped {
         runner.record(step.summary, status: .skip)
       } else {
+        if step.arguments.last == "test",
+          let platform = pendingSimulators.keys.first(where: { step.arguments.contains(discovered.testDestinations[$0] ?? "") }),
+          let id = pendingSimulators.removeValue(forKey: platform)
+        {
+          waitForTestSimulator(id: id, platform: platform)
+          try checkNotSuperseded()
+        }
         try runStep(step, paths: paths)
       }
+    }
+  }
+
+  /// Starts selected simulators while product builds run, then returns those that need a readiness check before testing.
+  private func startTestSimulators(project: ValidationProject, steps: [PlannedStep]) -> [ApplePlatform: String] {
+    var pending: [ApplePlatform: String] = [:]
+    for platform in ApplePlatform.hostFirst(project.testPlatforms) where platform != .macOS {
+      guard let destination = project.testDestinations[platform], let id = project.simulatorIDs[platform],
+        steps.contains(where: { $0.arguments.last == "test" && $0.arguments.contains(destination) })
+      else { continue }
+      do {
+        let result = try process.capture(["xcrun", "simctl", "boot", id])
+        if result.status == 0 || result.stderr.contains("current state: Booted") {
+          pending[platform] = id
+        } else {
+          print("Could not pre-boot \(platform.rawValue) simulator: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
+      } catch {
+        print("Could not pre-boot \(platform.rawValue) simulator: \(error)")
+      }
+    }
+    return pending
+  }
+
+  /// Waits for a previously started simulator before its first test step; Xcode can still launch it if this fails.
+  private func waitForTestSimulator(id: String, platform: ApplePlatform) {
+    do {
+      let result = try process.capture(["xcrun", "simctl", "bootstatus", id, "-b"])
+      if result.status != 0 {
+        print("Could not confirm \(platform.rawValue) simulator readiness: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+      }
+    } catch {
+      print("Could not confirm \(platform.rawValue) simulator readiness: \(error)")
     }
   }
 
@@ -364,6 +405,7 @@ final class ValidationTool {
       buildPlatforms: buildPlatforms,
       testPlatforms: testPlatforms,
       testDestinations: testDestinations,
+      simulatorIDs: simulators.mapValues(\.id),
       simulatorNotes: testPlatforms.compactMap { simulators[$0]?.note },
       packages: packages,
       unexaminedSubmodulePackages: unexamined
@@ -556,13 +598,18 @@ final class ValidationTool {
   /// `platforms` is retried once and never cached.
   private func simulators(container: [String], scheme: String, platforms: [ApplePlatform], paths: ValidationPaths) throws -> [ApplePlatform: SimulatorChoice] {
     let simulatorPlatforms = platforms.filter { $0 != .macOS }
-    let isComplete = { (simulators: [ApplePlatform: SimulatorChoice]) in simulatorPlatforms.allSatisfy { simulators[$0] != nil } }
-    return try discovered("simulators \(container.joined(separator: " ")) \(scheme)", isComplete: isComplete) {
+    let hasAll = { (simulators: [ApplePlatform: SimulatorChoice]) in simulatorPlatforms.allSatisfy { simulators[$0] != nil } }
+    let devices = try? process.capture(["xcrun", "simctl", "list", "-j", "devices"])
+    let deviceIDs = devices?.status == 0 ? try? TestSimulators.deviceIDs(devicesJSON: devices?.stdout ?? "") : nil
+    let isCurrent = { (simulators: [ApplePlatform: SimulatorChoice]) in
+      hasAll(simulators) && (deviceIDs.map { ids in simulatorPlatforms.allSatisfy { simulators[$0].map { ids.contains($0.id) } ?? false } } ?? true)
+    }
+    return try discovered("simulators \(container.joined(separator: " ")) \(scheme)", isComplete: isCurrent) {
       let runtimes = try process.capture(["xcrun", "simctl", "list", "-j", "runtimes"])
       let newestOS = runtimes.status == 0 ? (try? TestSimulators.newestOS(runtimesJSON: runtimes.stdout)) ?? [:] : [:]
       func list() throws -> [ApplePlatform: SimulatorChoice] {
         var simulators: [ApplePlatform: SimulatorChoice] = [:]
-        for _ in 1...2 where !isComplete(simulators) {
+        for _ in 1...2 where !hasAll(simulators) {
           let result = try process.capture(XcodeDestinations.showDestinationsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
           guard result.status == 0 else {
             throw ToolError("Failed to list destinations for scheme '\(scheme)':\n\(result.stderr)")

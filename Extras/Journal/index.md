@@ -5,3 +5,4 @@
 - [2026-09-24](2026-09-24.md) — Moved `validate` from ReleaseTools into `agt`; planned IDE-aware validation for 2.2; started the decision log.
 - [2026-09-25](2026-09-25.md) — Full validation in the background, with cooperative superseding; package schemes only for root packages; test simulators; commands moved into the `AgentToolsCore` library to fix release-mode tests on CI ([0004](../Decisions/0004-executable-is-only-an-entry-point.md)); drafted `agt script` for managing agents' helper scripts ([0005](../Decisions/0005-agt-manages-agent-scripts.md), draft).
 - [2026-09-26](2026-09-26.md) — Fixed a launch crash on macOS 26 in Xcode 27 builds (`swift_initBorrow` from swift-collections 1.7.0) with a swift-collections 1.7.1 floor; CI runs an Xcode 27 build on macOS 26.
+- [2026-09-28](2026-09-28.md) — Profiled Bookish validation and rejected a shared Xcode DerivedData experiment; investigated package aggregation and SwiftPM 6.4.

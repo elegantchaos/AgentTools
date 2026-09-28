@@ -21,7 +21,8 @@ struct TestSimulatorTests {
       newestOS: [.iOS: "27.2"]
     )
     let iOS = try #require(simulators[.iOS])
-    #expect(iOS.destination == "platform=iOS Simulator,name=Test iPhone 27.2,OS=27.2")
+    #expect(iOS.destination == "platform=iOS Simulator,id=D")
+    #expect(iOS.id == "D")
     #expect(iOS.isTestDevice)
     #expect(iOS.note == nil)
   }
@@ -32,7 +33,7 @@ struct TestSimulatorTests {
         "{ platform:iOS Simulator, id:A, OS:27.2, name:iPhone 18 Pro }",
         "{ platform:iOS Simulator, id:B, OS:27.2, name:Test iPad 27.2 }",
       ))
-    #expect(simulators[.iOS]?.destination == "platform=iOS Simulator,name=Test iPad 27.2,OS=27.2")
+    #expect(simulators[.iOS]?.destination == "platform=iOS Simulator,id=B")
     #expect(simulators[.iOS]?.isTestDevice == true)
   }
 
@@ -45,7 +46,7 @@ struct TestSimulatorTests {
       ),
       newestOS: [.iOS: "27.2"]
     )
-    #expect(simulators[.iOS]?.destination == "platform=iOS Simulator,name=Test iPhone 27.0,OS=27.0")
+    #expect(simulators[.iOS]?.destination == "platform=iOS Simulator,id=C")
     #expect(simulators[.iOS]?.isTestDevice == false)
     #expect(simulators[.iOS]?.note == "iOS tests run on Test iPhone 27.0 with iOS 27.0: there is no simulator named Test iPhone 27.2 or Test iPad 27.2.")
   }
@@ -56,7 +57,7 @@ struct TestSimulatorTests {
         "{ platform:tvOS Simulator, id:A, OS:26.5, name:Apple TV }",
         "{ platform:tvOS Simulator, id:B, OS:27.0, name:Apple TV 4K (3rd generation) }",
       ))
-    #expect(simulators[.tvOS]?.destination == "platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=27.0")
+    #expect(simulators[.tvOS]?.destination == "platform=tvOS Simulator,id=B")
     #expect(simulators[.tvOS]?.note == "tvOS tests run on Apple TV 4K (3rd generation) with tvOS 27.0: there is no simulator named Test TV 27.0.")
   }
 
@@ -67,6 +68,11 @@ struct TestSimulatorTests {
         "{ platform:tvOS Simulator, id:B, OS:27.0, name:Test TV 26.5 }",
       ))
     #expect(TestSimulators.missingTestDevices(for: [.macOS, .iOS, .tvOS, .watchOS], in: simulators) == [.tvOS])
+  }
+
+  @Test func currentDeviceIdentifiersComeFromSimctl() throws {
+    let devices = #"{"devices": {"iOS-27-2": [{"name": "Test iPhone 27.2", "udid": "CURRENT"}]}}"#
+    #expect(try TestSimulators.deviceIDs(devicesJSON: devices) == ["CURRENT"])
   }
 
   @Test func newestRuntimesAreFoundForEachPlatform() throws {
