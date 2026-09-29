@@ -15,17 +15,11 @@ struct SkillLinkDestination: Equatable {
 
   /// Returns the Codex and Claude Code skill directories, honouring their home overrides.
   static func defaults(environment: [String: String], homeDirectory: URL) -> [SkillLinkDestination] {
-    /// Builds the skills directory inside one runtime's home.
-    func runtime(_ label: String, homeVariable: String, defaultHome: String) -> SkillLinkDestination {
-      let home =
-        environment[homeVariable].map { URL(fileURLWithPath: $0) }
-        ?? homeDirectory.appendingPathComponent(defaultHome)
-      return SkillLinkDestination(label: label, directory: home.appendingPathComponent("skills"))
+    AgentRuntime.allCases.map { runtime in
+      SkillLinkDestination(
+        label: runtime.rawValue,
+        directory: runtime.home(environment: environment, homeDirectory: homeDirectory).appendingPathComponent("skills")
+      )
     }
-
-    return [
-      runtime("codex", homeVariable: "CODEX_HOME", defaultHome: ".codex"),
-      runtime("claude", homeVariable: "CLAUDE_CONFIG_DIR", defaultHome: ".claude"),
-    ]
   }
 }

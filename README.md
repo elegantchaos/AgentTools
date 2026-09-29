@@ -23,7 +23,17 @@ agt <command>
 
 Show the installed version with `agt --version`.
 
-Run `agt rules` and `agt skills` from the root of the Agents repository, or set `AGENTS_REPO_ROOT` to use a different checkout. Run `agt format` and `agt validate` from the root of the Swift repository being checked.
+Run `agt refresh`, `agt rules` and `agt skills` from the root of the Agents repository, or set `AGENTS_REPO_ROOT` to use a different checkout. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure` runs anywhere.
+
+### Refresh
+
+Bring this machine's Claude Code and Codex up to date with the Agents repository:
+
+```shell
+agt refresh
+```
+
+It warns about plugin copies of `ensure-agt.sh` that differ from the `baseline` plugin's, runs `agt skills sync --all`, `agt skills link` and `agt sandbox configure`, then installs or refreshes every plugin in the repository's marketplace files (`.claude-plugin/marketplace.json` for Claude Code and `.agents/plugins/marketplace.json` for Codex). Each runtime's command is found on `PATH`, or else in its usual install locations, including the copies bundled with the Claude and ChatGPT apps; a runtime that is not installed is skipped. Every step is safe to repeat. It does not update `agt` itself.
 
 ### Rules
 
@@ -181,7 +191,13 @@ Run `agt format --help` or `agt validate --help` for all options.
 
 When validation runs inside another sandbox, such as a coding agent's, it detects this and turns off the sandboxes that SwiftPM and Xcode would otherwise start for package manifests, plugins, macros, and build scripts, since those cannot start inside another sandbox.
 
-The agent's sandbox must still allow writes to two locations outside the repository:
+The agent's sandbox must still allow writes to two locations outside the repository. `agt sandbox configure` adds both to Claude Code's and Codex's user configuration, keeping every other setting, and backs up a file with a `.bak` suffix before changing it:
+
+```shell
+agt sandbox configure
+```
+
+The two locations are:
 
 - `~/Library/Caches/org.swift.swiftpm`, which Xcode always uses for package manifests, and which validation shares for package downloads.
 - The per-user clang module cache, which Xcode uses when a package manifest imports macro support. Find its path with:
@@ -190,7 +206,7 @@ The agent's sandbox must still allow writes to two locations outside the reposit
   echo "$(getconf DARWIN_USER_CACHE_DIR)clang/ModuleCache"
   ```
 
-For Claude Code, add both to `sandbox.filesystem.allowWrite` in `~/.claude/settings.json`:
+To configure them by hand for Claude Code, add both to `sandbox.filesystem.allowWrite` in `~/.claude/settings.json`:
 
 ```json
 {

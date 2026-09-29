@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.8.0
+
+- Adds `agt sandbox configure`, which lets Claude Code's and Codex's sandboxes write SwiftPM's cache and the per-user clang module cache, as validation needs. It edits Codex's `config.toml` in place, keeping comments and layout, and extends a multi-line `writable_roots` array or a dotted `sandbox_workspace_write.writable_roots` key. It replaces the Agents repository's `scripts/configure-sandboxes`.
+- Adds `agt refresh`, which syncs and links the shared skills, configures the sandboxes, and installs or refreshes the Agents repository's plugins in Claude Code and Codex. When a runtime's command is not on `PATH`, it looks in the usual install locations, including the copies bundled with the Claude and ChatGPT apps. It replaces the Agents repository's `scripts/refresh`.
+
 ## 3.7.0
 
 - Tests on simulators use the platform's test device for its newest installed runtime, named `Test <device> <version>`: `Test iPhone 27.2` (or `Test iPad 27.2`), `Test TV 27.0`, `Test Watch 27.0`, or `Test Vision …`. When the newest runtime has none, validation creates one, of the device the App Store asks screenshots for (the newest iPhone Pro Max, 13-inch iPad Pro, Apple TV 4K at 4K, or Apple Watch Ultra), and reports it. Previously it used the first simulator with the newest OS, which could be an iPad.
