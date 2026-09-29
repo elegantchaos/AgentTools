@@ -70,10 +70,13 @@ struct SandboxConfigurator {
   }
 
   /// Applies `edit` to a configuration file, backing it up and writing the result when it returns new text.
+  ///
+  /// A symlinked file is edited in place at its destination, so the link survives.
   private func update(_ runtime: AgentRuntime, file: URL, edit: (String?) throws -> String?) throws -> SandboxConfigurationEntry {
     let fileManager = FileManager.default
-    let exists = fileManager.fileExists(atPath: file.path)
-    let text = exists ? try String(contentsOf: file, encoding: .utf8) : nil
+    let target = file.resolvingSymlinksInPath()
+    let exists = fileManager.fileExists(atPath: target.path)
+    let text = exists ? try String(contentsOf: target, encoding: .utf8) : nil
     let updated: String?
     do {
       updated = try edit(text)
@@ -85,12 +88,12 @@ struct SandboxConfigurator {
     }
 
     if exists {
-      let backup = URL(fileURLWithPath: file.path + ".bak")
+      let backup = URL(fileURLWithPath: target.path + ".bak")
       try? fileManager.removeItem(at: backup)
-      try fileManager.copyItem(at: file, to: backup)
+      try fileManager.copyItem(at: target, to: backup)
     }
-    try fileManager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try updated.write(to: file, atomically: true, encoding: .utf8)
+    try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try updated.write(to: target, atomically: true, encoding: .utf8)
     return SandboxConfigurationEntry(runtime: runtime, file: file, status: .updated)
   }
 }

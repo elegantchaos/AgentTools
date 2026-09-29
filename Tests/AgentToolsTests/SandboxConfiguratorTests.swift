@@ -63,6 +63,23 @@ struct SandboxConfiguratorTests {
     }
   }
 
+  /// Edits and backs up the destination of a symlinked file, leaving the link in place.
+  @Test func preservesSymlinkedFile() throws {
+    try withTemporaryHomes { configurator in
+      let fileManager = FileManager.default
+      let real = configurator.codexConfig.deletingLastPathComponent().appendingPathComponent("real.toml")
+      try fileManager.createDirectory(at: real.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try "model = \"gpt\"\n".write(to: real, atomically: true, encoding: .utf8)
+      try fileManager.createSymbolicLink(at: configurator.codexConfig, withDestinationURL: real)
+
+      _ = try configurator.configure()
+
+      #expect(try fileManager.destinationOfSymbolicLink(atPath: configurator.codexConfig.path) == real.path)
+      #expect(try String(contentsOf: real, encoding: .utf8).contains("\"/cache/clang\""))
+      #expect(try String(contentsOfFile: real.path + ".bak", encoding: .utf8) == "model = \"gpt\"\n")
+    }
+  }
+
   /// Runs `body` with a configurator whose runtime homes are in a temporary directory.
   private func withTemporaryHomes(_ body: (SandboxConfigurator) throws -> Void) throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
