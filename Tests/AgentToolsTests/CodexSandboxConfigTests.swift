@@ -31,6 +31,13 @@ struct CodexSandboxConfigTests {
     #expect(updated == "[sandbox_workspace_write] # comment\nwritable_roots = [\"/cache/swiftpm\", \"/cache/clang\"]\nnetwork_access = true\n\n[other]\nx = 1\n")
   }
 
+  /// Stops looking for the key at an array-of-tables header, rather than reading the next entry's keys.
+  @Test func stopsAtArrayOfTables() throws {
+    let text = "[sandbox_workspace_write]\nnetwork_access = true\n\n[[hooks]]\nwritable_roots = [\"/other\"]\n"
+    let updated = try CodexSandboxConfig.adding(paths, to: text)
+    #expect(updated == "[sandbox_workspace_write]\nwritable_roots = [\"/cache/swiftpm\", \"/cache/clang\"]\nnetwork_access = true\n\n[[hooks]]\nwritable_roots = [\"/other\"]\n")
+  }
+
   /// Appends missing entries to a single-line array.
   @Test func extendsSingleLineArray() throws {
     let text = "[sandbox_workspace_write]\nwritable_roots = [\"/cache/swiftpm\"]  # keep\n"

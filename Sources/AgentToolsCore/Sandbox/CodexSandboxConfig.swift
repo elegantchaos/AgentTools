@@ -102,10 +102,13 @@ extension CodexSandboxConfig {
       return lineEnd - rest.count + 1
     }
 
-    /// Returns the name of the standard table that `line` declares, or `nil` when it is not a table header.
+    /// Returns the name of the table that `line` declares, or `nil` when it is not a table header.
+    ///
+    /// An array-of-tables header is named with its brackets, so it ends a table without matching any standard one.
     private func tableName(in line: Substring) -> String? {
-      guard line.hasPrefix("["), !line.hasPrefix("[["), let close = line.firstIndex(of: "]") else { return nil }
-      return line[line.index(after: line.startIndex)..<close].trimmingCharacters(in: .whitespaces)
+      guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { return nil }
+      let name = line[line.index(after: line.startIndex)..<close].trimmingCharacters(in: .whitespaces)
+      return line.hasPrefix("[[") ? "[" + name : name
     }
 
     /// Returns the start and end, excluding the line break, of every line.
