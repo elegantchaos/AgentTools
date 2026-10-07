@@ -2,7 +2,8 @@
 
 - This repository is a Swift package that provides the `agt` CLI for maintaining the shared Agents repository and validating Swift repositories.
 - Keep a development journal in `Extras/Journal/`.
-- Keep a decision log in `Extras/Decisions/`.
+- Record important architectural and policy decisions in `Extras/Decisions/`.
+- This tool is only used internally on a handful of machines. It is generally not necessary to preserve backwards compatibility with old versions.
 
 ## Standard Rules
 
