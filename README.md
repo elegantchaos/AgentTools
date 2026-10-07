@@ -23,7 +23,7 @@ agt <command>
 
 Show the installed version with `agt --version`.
 
-Run `agt refresh`, `agt rules` and `agt skills` from the root of the Agents repository, or set `AGENTS_REPO_ROOT` to use a different checkout. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure` runs anywhere.
+Run `agt refresh`, `agt rules` and `agt skills` from the root of the Agents repository, or set `AGENTS_REPO_ROOT` to use a different checkout. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure` and `agt calendar` run anywhere.
 
 ### Refresh
 
@@ -74,6 +74,46 @@ Audit skills for publication blockers:
 ```shell
 agt skills audit --all
 ```
+
+### Calendar
+
+List today's events, or those for up to 14 days from today:
+
+```shell
+agt calendar events
+agt calendar events --days 7
+```
+
+List incomplete reminders that are overdue or due within the same range:
+
+```shell
+agt calendar reminders --days 3
+```
+
+Each item is one line: its date and time, its title, an event's location, and the calendar or list it is in. Text is reduced to a single line of at most 80 characters, because calendar text can come from anyone who sends an invitation. Notes, attendees, URLs and attachments are never read.
+
+macOS grants calendar and reminder access to the process responsible for the program asking, normally the terminal or app that started it. So that the permission belongs to `agt` alone, `agt calendar` runs a second `agt` as its own responsible process, using a private macOS function, and that process reads the calendar. Whenever `agt` is its own responsible process it accepts only `agt calendar` commands, so nothing else it could run, and nothing those would start, inherits the permission.
+
+Grant access once with:
+
+```shell
+agt calendar authorize
+```
+
+It shows macOS's prompt, naming `agt`, for calendars and for reminders. The permission is tied to the exact `agt` binary, so authorize again after each update. `events` and `reminders` never prompt; without access they say to run `authorize`.
+
+To include only some calendars or reminder lists, name them in `~/.agt/config.json`:
+
+```json
+{
+  "calendar": {
+    "calendars": ["Home", "Work"],
+    "reminderLists": ["Reminders"]
+  }
+}
+```
+
+This filters out calendars you do not want reported, such as subscriptions. It is not a security boundary, since anything running as you can edit the file.
 
 ### Format and Validate
 

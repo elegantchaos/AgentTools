@@ -8,14 +8,15 @@ import ArgumentParser
 /// Root command for shared agent maintenance and repository validation commands.
 ///
 /// Handles the `--version` flag, or shows the help when no subcommand is given.
-/// The `agt` executable runs it from its `@main` entry point, which stays outside this library so that
-/// tests never link an executable's `main`.
+/// `AgentToolsLauncher` runs it from the `agt` executable's `@main` entry point, which stays outside this library so
+/// that tests never link an executable's `main`.
 public struct AgentToolsCommand: AsyncParsableCommand {
   /// Top-level command configuration.
   public static let configuration = CommandConfiguration(
     commandName: "agt",
     abstract: "Maintenance and validation tools for agent-driven development.",
     subcommands: [
+      CalendarCommand.self,
       FormatCommand.self,
       RefreshCommand.self,
       Rules.self,

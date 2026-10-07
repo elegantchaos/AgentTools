@@ -23,6 +23,11 @@ let package = Package(
       name: "AgentTools",
       dependencies: [
         "AgentToolsCore"
+      ],
+      exclude: ["Info.plist"],
+      linkerSettings: [
+        // Embeds the Info.plist that gives `agt` an identity and usage descriptions for macOS privacy prompts.
+        .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "\(Context.packageDirectory)/Sources/AgentTools/Info.plist"])
       ]
     ),
     .target(
