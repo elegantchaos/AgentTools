@@ -2,7 +2,7 @@
 
 ## 3.9.0
 
-- Adds `agt calendar events` and `agt calendar reminders`, which list upcoming events and incomplete reminders, one short line each, for up to 14 days. Only times, titles, locations and calendar or list names are read, and text is reduced to one line of at most 80 characters.
+- Adds `agt calendar events` and `agt calendar reminders`, which list upcoming events and incomplete reminders, one short line each, for up to 14 days. Reminders overdue by more than seven days are left out. Only times, titles, locations and calendar or list names are read, and text is reduced to one line of at most 80 characters.
 - Adds `agt calendar authorize`, which asks macOS for calendar and reminder access. `agt` relaunches itself as its own responsible process, using a private macOS function, so the permission belongs to `agt` and not to the terminal or app that runs it. That process accepts only the calendar commands. The permission is tied to the exact binary, so authorize again after each update.
 - `agt` embeds an Info.plist, giving it the bundle identifier `com.elegantchaos.agt`.
 

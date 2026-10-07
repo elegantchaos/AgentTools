@@ -35,7 +35,8 @@ struct CalendarQueriesTests {
     #expect(store.requestedEventWindows == [window])
   }
 
-  /// Lists reminders due before the end of the window when access is granted, filtered by the configured lists.
+  /// Lists reminders due in the window, or overdue by up to a week, when access is granted, filtered by the configured
+  /// lists.
   @Test func listsRemindersWhenGranted() async throws {
     let store = FakeCalendarStore(
       access: [.reminders: .granted],
@@ -47,7 +48,7 @@ struct CalendarQueriesTests {
     let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: ["Home"]), report: report)
 
     #expect(try await queries.reminders(in: window) == ["2026-10-06  Overdue [Home]"])
-    #expect(store.requestedReminderEnds == [window.end])
+    #expect(store.requestedReminderRanges == [window.start.addingTimeInterval(-7 * 86_400)..<window.end])
   }
 
   /// Without access, the queries read nothing and point at `agt calendar authorize`.
@@ -63,7 +64,7 @@ struct CalendarQueriesTests {
       try await queries.reminders(in: window)
     }
     #expect(store.requestedEventWindows.isEmpty)
-    #expect(store.requestedReminderEnds.isEmpty)
+    #expect(store.requestedReminderRanges.isEmpty)
   }
 
   /// The missing-access error tells the user what to run.
@@ -117,8 +118,8 @@ private final class FakeCalendarStore: CalendarStore {
   /// The windows events were read for, in order.
   private(set) var requestedEventWindows: [CalendarWindow] = []
 
-  /// The end dates reminders were read for, in order.
-  private(set) var requestedReminderEnds: [Date] = []
+  /// The due-date ranges reminders were read for, in order.
+  private(set) var requestedReminderRanges: [Range<Date>] = []
 
   /// Creates a store with the given access, request outcomes and contents.
   init(access: [CalendarItemKind: CalendarAccess], grants: [CalendarItemKind: CalendarAccess] = [:], events: [CalendarEvent] = [], reminders: [CalendarReminder] = []) {
@@ -148,9 +149,9 @@ private final class FakeCalendarStore: CalendarStore {
     return storedEvents
   }
 
-  /// Records the end date and returns every stored reminder.
-  func incompleteReminders(dueBefore end: Date) async -> [CalendarReminder] {
-    requestedReminderEnds.append(end)
+  /// Records the range and returns every stored reminder.
+  func incompleteReminders(due range: Range<Date>) async -> [CalendarReminder] {
+    requestedReminderRanges.append(range)
     return storedReminders
   }
 }

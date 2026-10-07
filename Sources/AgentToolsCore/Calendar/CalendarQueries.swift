@@ -8,6 +8,9 @@ import Foundation
 /// The calendar commands' work, once `agt` is running as its own responsible process: checking access, reading
 /// items from a store, and formatting them.
 struct CalendarQueries {
+  /// The most days overdue a reminder can be and still be listed.
+  static let overdueDays = 7
+
   /// Where events and reminders are read from.
   let store: any CalendarStore
 
@@ -23,11 +26,14 @@ struct CalendarQueries {
     return report.eventLines(store.events(in: window), calendars: settings.calendars)
   }
 
-  /// Returns the lines for the incomplete reminders due before the end of `window`, including overdue ones, or throws
+  /// Returns the lines for the incomplete reminders due in `window`, or overdue by up to `overdueDays`, or throws
   /// `AccessMissing` without reading anything.
+  ///
+  /// Older overdue reminders are left out, so a long tail of forgotten ones does not crowd out what is due now.
   func reminders(in window: CalendarWindow) async throws -> [String] {
     try requireAccess(to: .reminders)
-    return report.reminderLines(await store.incompleteReminders(dueBefore: window.end), lists: settings.reminderLists)
+    let start = report.calendar.date(byAdding: .day, value: -Self.overdueDays, to: window.start) ?? window.start
+    return report.reminderLines(await store.incompleteReminders(due: start..<window.end), lists: settings.reminderLists)
   }
 
   /// Asks for access to each kind of item that has not been decided yet, and returns a line describing the access to

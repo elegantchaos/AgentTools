@@ -50,9 +50,9 @@ final class EventKitCalendarStore: CalendarStore {
     }
   }
 
-  /// Returns the incomplete reminders due before `end`, from every list, including overdue ones.
-  func incompleteReminders(dueBefore end: Date) async -> [CalendarReminder] {
-    let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: end, calendars: nil)
+  /// Returns the incomplete reminders due within `range`, from every list.
+  func incompleteReminders(due range: Range<Date>) async -> [CalendarReminder] {
+    let predicate = store.predicateForIncompleteReminders(withDueDateStarting: range.lowerBound, ending: range.upperBound, calendars: nil)
     return await withCheckedContinuation { continuation in
       store.fetchReminders(matching: predicate) { reminders in
         continuation.resume(returning: (reminders ?? []).compactMap(Self.reminder(from:)))

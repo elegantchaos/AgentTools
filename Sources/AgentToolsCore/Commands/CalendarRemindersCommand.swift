@@ -6,13 +6,13 @@
 import ArgumentParser
 import Foundation
 
-/// Lists incomplete reminders that are overdue or due soon.
+/// Lists incomplete reminders that are due soon or recently overdue.
 struct CalendarRemindersCommand: AsyncParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "reminders",
-    abstract: "List incomplete reminders due from today, including overdue ones.",
-    discussion: "Lists incomplete reminders that are overdue or due within the given number of days."
+    abstract: "List incomplete reminders due from today, or overdue by up to a week.",
+    discussion: "Lists incomplete reminders due within the given number of days, and those overdue by up to \(CalendarQueries.overdueDays) days."
   )
 
   /// The number of whole days to cover, starting today.

@@ -18,6 +18,6 @@ protocol CalendarStore {
   /// Returns the events that overlap `window`.
   func events(in window: CalendarWindow) -> [CalendarEvent]
 
-  /// Returns the incomplete reminders due before `end`, including overdue ones.
-  func incompleteReminders(dueBefore end: Date) async -> [CalendarReminder]
+  /// Returns the incomplete reminders due within `range`.
+  func incompleteReminders(due range: Range<Date>) async -> [CalendarReminder]
 }

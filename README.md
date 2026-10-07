@@ -84,7 +84,7 @@ agt calendar events
 agt calendar events --days 7
 ```
 
-List incomplete reminders that are overdue or due within the same range:
+List incomplete reminders due within the same range, or overdue by up to seven days:
 
 ```shell
 agt calendar reminders --days 3
