@@ -28,6 +28,10 @@ struct ValidationProject {
   let packages: [LocalPackage]
   /// Directories of packages in submodules that the submodule policy excluded before they were examined.
   var unexaminedSubmodulePackages: [String] = []
+  /// The test plan to select for each product scheme that has a Full Validation plan.
+  var testPlans: [String: String] = [:]
+  /// Warnings about product packages whose tests the product schemes do not fully run.
+  var coverageWarnings: [String] = []
 }
 
 /// One step of a validation plan.
@@ -50,9 +54,10 @@ struct PlannedStep: Equatable {
 /// schemes' tests and the tests of the local packages in the product.
 ///
 /// A product with no Xcode workspace or project builds and tests with SwiftPM on macOS, because Xcode runs a package's
-/// build plugins only for its all-targets scheme, and uses `xcodebuild` only for other platforms. A package's tests run
-/// through the root container's scheme for it when there is one, sharing the product's build; otherwise with SwiftPM on
-/// macOS, and with `xcodebuild` in the package's own directory on other platforms.
+/// build plugins only for its all-targets scheme, and uses `xcodebuild` only for other platforms. A product scheme runs
+/// its test plan named Full Validation when it has one. A package whose tests a product scheme already runs gets no
+/// steps of its own. Other packages' tests run through a shared container scheme for the package when one lists its
+/// tests; otherwise with SwiftPM on macOS, and with `xcodebuild` in the package's own directory on other platforms.
 enum ValidationPlan {
   /// Returns the packages whose tests run: those with tests that the product uses, in the repository or in a submodule
   /// the policy includes, and not excluded by name.
@@ -81,7 +86,9 @@ enum ValidationPlan {
 
     let summaries = project.packages.map { package -> String in
       let outcome: String
-      if tested.contains(package) {
+      if let scheme = package.coveredBy {
+        outcome = "tested by scheme \(scheme)"
+      } else if tested.contains(package) {
         outcome = package.scheme.map { "tested, with scheme \($0)" } ?? "tested, in its own directory"
       } else if !package.inProduct {
         outcome = "not tested, not part of the product"
@@ -114,8 +121,8 @@ enum ValidationPlan {
       ValidationTool.swiftPMArguments([command], packageDir: packageDir, paths: paths, disableSandbox: disableSwiftPMSandbox)
     }
 
-    func xcodebuild(_ scheme: String, _ destination: String, _ action: String) -> [String] {
-      xcodebuildArguments(container: project.container, scheme: scheme, destination: destination, action: action, paths: paths, sandbox: sandbox, quiet: quiet)
+    func xcodebuild(_ scheme: String, _ destination: String, _ action: String, testPlan: String? = nil) -> [String] {
+      xcodebuildArguments(container: project.container, scheme: scheme, testPlan: testPlan, destination: destination, action: action, paths: paths, sandbox: sandbox, quiet: quiet)
     }
 
     var steps: [PlannedStep] = []
@@ -145,7 +152,7 @@ enum ValidationPlan {
       }
     }
 
-    let tested = testedPackages(project.packages, testSubmodules: testSubmodules, excluded: excludedPackages)
+    let tested = testedPackages(project.packages, testSubmodules: testSubmodules, excluded: excludedPackages).filter { $0.coveredBy == nil }
     let productTests = project.productSchemes.filter(project.schemesWithTests.contains)
     guard !productTests.isEmpty || !tested.isEmpty else { return steps }
 
@@ -169,7 +176,7 @@ enum ValidationPlan {
           PlannedStep(
             title: "Test \(scheme) on \(platform.rawValue)",
             summary: "test \(scheme) (\(platform.rawValue))",
-            arguments: xcodebuild(scheme, destination, "test"),
+            arguments: xcodebuild(scheme, destination, "test", testPlan: project.testPlans[scheme]),
             logName: "test_\(scheme)_\(platform.rawValue)"
           )
         )
@@ -263,11 +270,12 @@ enum ValidationPlan {
     return steps
   }
 
-  /// Returns the `xcodebuild` arguments for one scheme, destination, and action, in validation's build directory unless
-  /// `derivedDataPath` names another.
+  /// Returns the `xcodebuild` arguments for one scheme, with its test plan `testPlan` when given, destination, and
+  /// action, in validation's build directory unless `derivedDataPath` names another.
   static func xcodebuildArguments(
     container: [String],
     scheme: String,
+    testPlan: String? = nil,
     destination: String,
     action: String,
     derivedDataPath: String? = nil,
@@ -275,7 +283,7 @@ enum ValidationPlan {
     sandbox: EnclosingSandbox,
     quiet: Bool
   ) -> [String] {
-    ["xcodebuild"] + container + ["-scheme", scheme, "-destination", destination, "-derivedDataPath", derivedDataPath ?? paths.derivedDataPath]
+    ["xcodebuild"] + container + ["-scheme", scheme] + (testPlan.map { ["-testPlan", $0] } ?? []) + ["-destination", destination, "-derivedDataPath", derivedDataPath ?? paths.derivedDataPath]
       + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults + (quiet ? ["-quiet"] : []) + ["CODE_SIGNING_ALLOWED=NO"]
       + sandbox.xcodebuildBuildSettings + [action]
   }

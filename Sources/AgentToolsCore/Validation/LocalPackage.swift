@@ -24,6 +24,11 @@ struct LocalPackage: Equatable {
   /// The scheme that tests the package when `xcodebuild` opens the package directory itself, used on platforms other
   /// than macOS when the root container has no scheme for it.
   var packageScheme: String?
+  /// The names of the package's test targets.
+  var testTargets: [String] = []
+  /// The product scheme that already runs all of the package's tests, so the package needs no test step of its own, or
+  /// `nil` when none does.
+  var coveredBy: String?
 
   /// Returns the package's scheme among `schemes`: its all-targets scheme when there is one, otherwise the scheme of
   /// one of its products, or of the package name.

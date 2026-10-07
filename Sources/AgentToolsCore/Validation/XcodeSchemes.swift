@@ -19,9 +19,9 @@ enum XcodeSchemes {
     return containers["workspace"]?.schemes ?? containers["project"]?.schemes ?? []
   }
 
-  /// Returns `true` when a scheme file's test action includes at least one test target.
+  /// Returns `true` when a scheme file's test action lists test targets or uses a test plan.
   static func hasTests(schemeFile contents: String) -> Bool {
-    contents.contains("<TestableReference")
+    contents.contains("<TestableReference") || contents.contains("<TestPlanReference")
   }
 
   /// Returns the relative paths of the local Swift packages a project file references.
