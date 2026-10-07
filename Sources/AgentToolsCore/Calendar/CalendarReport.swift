@@ -35,7 +35,9 @@ extension CalendarReport {
     let start = day(event.start)
     let times: String
     if event.isAllDay {
-      times = "all day"
+      // EventKit's end is exclusive; the preceding instant is on the final occupied day, including across DST.
+      let lastDay = day(event.end.addingTimeInterval(-1))
+      times = lastDay == start ? "all day" : "all day through \(lastDay)"
     } else if day(event.end) == start {
       times = "\(time(event.start))–\(time(event.end))"
     } else {

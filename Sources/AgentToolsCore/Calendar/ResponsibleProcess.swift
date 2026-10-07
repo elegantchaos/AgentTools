@@ -12,12 +12,11 @@ import Darwin
 /// belongs to its own executable. Processes it starts inherit that responsibility. The functions are looked up at run
 /// time, so `agt` still runs if they disappear.
 enum ResponsibleProcess {
-  /// Returns whether the current process is its own responsible process, or `nil` when the private function is
-  /// unavailable.
-  static func isSelfResponsible() -> Bool? {
-    guard let responsiblePID = symbol("responsibility_get_pid_responsible_for_pid", as: ResponsiblePIDFunction.self) else { return nil }
-    let pid = getpid()
-    return responsiblePID(pid) == pid
+  /// Returns whether `processID` is its own responsible process, or `nil` when the lookup is unavailable.
+  /// Defaults to the current process and macOS's responsibility lookup; tests can supply a controlled lookup.
+  static func isSelfResponsible(processID: pid_t = getpid(), responsiblePID: (pid_t) -> pid_t? = lookupResponsiblePID) -> Bool? {
+    guard let responsible = responsiblePID(processID) else { return nil }
+    return responsible == processID
   }
 
   /// Runs `executable` with `arguments` and `environment` as its own responsible process, sharing this process's
@@ -59,6 +58,11 @@ enum ResponsibleProcess {
 }
 
 extension ResponsibleProcess {
+  /// Resolves the responsible process through macOS's private function, or returns `nil` when it is unavailable.
+  private static func lookupResponsiblePID(_ pid: pid_t) -> pid_t? {
+    symbol("responsibility_get_pid_responsible_for_pid", as: ResponsiblePIDFunction.self)?(pid)
+  }
+
   /// The signature of `responsibility_get_pid_responsible_for_pid`, which returns the responsible process for a pid.
   private typealias ResponsiblePIDFunction = @convention(c) (pid_t) -> pid_t
 

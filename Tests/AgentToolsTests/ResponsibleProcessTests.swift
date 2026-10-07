@@ -3,15 +3,25 @@
 //  Copyright © 2026 Elegant Chaos Limited. All rights reserved.
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+import Darwin
 import Testing
 
 @testable import AgentToolsCore
 
 /// Tests the wrappers around macOS's private process-responsibility functions.
 struct ResponsibleProcessTests {
-  /// The test runner was started by another program, so it is not its own responsible process.
-  @Test func testProcessIsNotSelfResponsible() {
-    #expect(ResponsibleProcess.isSelfResponsible() == false)
+  /// Responsibility depends on the resolved process ID, including an unavailable lookup, rather than the test host.
+  @Test(arguments: [
+    (pid_t?.some(42), Bool?.some(true)),
+    (pid_t?.some(7), Bool?.some(false)),
+    (pid_t?.none, Bool?.none),
+  ])
+  func checksResolvedResponsibility(resolvedPID: pid_t?, expected: Bool?) {
+    let result = ResponsibleProcess.isSelfResponsible(processID: 42) { pid in
+      #expect(pid == 42)
+      return resolvedPID
+    }
+    #expect(result == expected)
   }
 
   /// A disclaimed process runs, and its exit status is returned.

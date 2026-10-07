@@ -38,6 +38,25 @@ struct CalendarReportTests {
     )
   }
 
+  /// Multi-day all-day events include their final occupied date, even when they began before today's query.
+  @Test(arguments: [
+    ("2026-10-05T00:00:00Z", "2026-10-10T00:00:00Z", "2026-10-05 all day through 2026-10-09  Holiday [Home]"),
+    ("2026-12-31T00:00:00Z", "2027-01-03T00:00:00Z", "2026-12-31 all day through 2027-01-02  Holiday [Home]"),
+  ])
+  func includesAllDayEventSpan(start: String, end: String, expected: String) throws {
+    let event = CalendarEvent(start: try date(start), end: try date(end), isAllDay: true, title: "Holiday", location: nil, calendar: "Home")
+    #expect(report.eventLines([event], calendars: nil) == [expected])
+  }
+
+  /// An all-day event spanning a daylight-saving transition counts calendar days rather than 24-hour intervals.
+  @Test func includesAllDaySpanAcrossDaylightSaving() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = try #require(TimeZone(identifier: "Europe/London"))
+    let report = CalendarReport(calendar: calendar)
+    let event = CalendarEvent(start: try date("2026-10-24T23:00:00Z"), end: try date("2026-10-27T00:00:00Z"), isAllDay: true, title: "Holiday", location: nil, calendar: "Home")
+    #expect(report.eventLines([event], calendars: nil) == ["2026-10-25 all day through 2026-10-26  Holiday [Home]"])
+  }
+
   /// Only the named calendars are listed when names are given.
   @Test func filtersEventsByCalendar() throws {
     let events = [

@@ -90,7 +90,7 @@ List incomplete reminders due within the same range, or overdue by up to seven d
 agt calendar reminders --days 3
 ```
 
-Each item is one line: its date and time, its title, an event's location, and the calendar or list it is in. Text is reduced to a single line of at most 80 characters, because calendar text can come from anyone who sends an invitation. Notes, attendees, URLs and attachments are never read.
+Each item is one line: its date and time, its title, an event's location, and the calendar or list it is in. Multi-day all-day events show their final included date, so an ongoing event's span is visible. Text is reduced to a single line of at most 80 characters, because calendar text can come from anyone who sends an invitation. Notes, attendees, URLs and attachments are never read.
 
 macOS grants calendar and reminder access to the process responsible for the program asking, normally the terminal or app that started it. So that the permission belongs to `agt` alone, `agt calendar` runs a second `agt` as its own responsible process, using a private macOS function, and that process reads the calendar. Whenever `agt` is its own responsible process it accepts only `agt calendar` commands, so nothing else it could run, and nothing those would start, inherits the permission.
 
