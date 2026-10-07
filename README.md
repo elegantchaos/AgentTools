@@ -100,7 +100,7 @@ Grant access once with:
 agt calendar authorize
 ```
 
-It shows macOS's prompt, naming `agt`, for calendars and for reminders. The permission is tied to the exact `agt` binary, so authorize again after each update. `events` and `reminders` never prompt; without access they say to run `authorize`.
+It shows macOS's prompt, naming the `agt` executable, for calendars and for reminders. The permission is tied to the exact `agt` binary, so authorize again after each update. `events` and `reminders` never prompt; without access they say to run `authorize`.
 
 To include only some calendars or reminder lists, name them in `~/.agt/config.json`:
 
