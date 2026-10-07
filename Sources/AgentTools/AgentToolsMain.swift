@@ -7,12 +7,12 @@ import AgentToolsCore
 
 /// Entry point for the `agt` executable.
 ///
-/// It only runs `AgentToolsCommand`. Everything else lives in `AgentToolsCore`, which the tests import,
-/// so no test build has to link, or rename, this `main`.
+/// It only runs `AgentToolsLauncher`, which chooses the root command. Everything else lives in `AgentToolsCore`, which
+/// the tests import, so no test build has to link, or rename, this `main`.
 @main
 enum AgentToolsMain {
   /// Parses the command line and runs the selected command.
   static func main() async {
-    await AgentToolsCommand.main()
+    await AgentToolsLauncher.main()
   }
 }
