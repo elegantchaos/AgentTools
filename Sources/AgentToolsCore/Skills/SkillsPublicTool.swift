@@ -37,11 +37,11 @@ final class SkillsPublicTool {
     self.linkDestinations = linkDestinations
   }
 
-  /// Resolves the repository root from explicit environment or marker scanning.
+  /// Resolves the repository root from the environment override or the shared checkout in the user's home directory.
   static func locateRepoRoot() throws -> URL {
     try RepoRootLocator.locateRepoRoot(
       environment: ProcessInfo.processInfo.environment,
-      currentDirectoryPath: FileManager.default.currentDirectoryPath,
+      homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
       fileExistsAtPath: FileManager.default.fileExists(atPath:)
     )
   }

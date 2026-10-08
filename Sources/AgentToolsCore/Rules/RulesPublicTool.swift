@@ -28,7 +28,7 @@ final class RulesPublicTool {
     let fileManager = FileManager.default
     let repoRoot = try RepoRootLocator.locateRepoRoot(
       environment: ProcessInfo.processInfo.environment,
-      currentDirectoryPath: fileManager.currentDirectoryPath,
+      homeDirectory: fileManager.homeDirectoryForCurrentUser,
       fileExistsAtPath: fileManager.fileExists(atPath:)
     )
     let codexHome = URL(

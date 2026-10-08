@@ -8,47 +8,58 @@ import Testing
 
 @testable import AgentToolsCore
 
-/// Tests for repository root detection in different runtime layouts.
+/// Tests explicit repository overrides and the shared checkout in the user's home directory.
 struct RepoRootLocatorTests {
-  /// Prefers AGENTS_REPO_ROOT when it is set.
+  /// Explicit test checkouts take precedence without requiring the default repository to exist.
   @Test func locatesRepoRootFromEnvironmentOverride() throws {
     let root = try RepoRootLocator.locateRepoRoot(
-      environment: ["AGENTS_REPO_ROOT": "/tmp/custom-root"],
-      currentDirectoryPath: "/tmp/ignored",
-      fileExistsAtPath: { _ in false }
+      environment: ["AGENTS_REPO_ROOT": "/fixtures/../custom-root"],
+      homeDirectory: URL(fileURLWithPath: "/test-home"),
+      fileExistsAtPath: { _ in
+        Issue.record("An explicit root should not inspect the default checkout.")
+        return false
+      }
     )
 
-    #expect(root.path == "/tmp/custom-root")
+    #expect(root.path == "/custom-root")
   }
 
-  /// Finds the root using markers owned by the shared Agents repository.
-  @Test func locatesRootUsingSharedRepositoryMarkers() throws {
-    let candidateRoot = "/repo"
-    let paths = Set([
-      "\(candidateRoot)/skills",
-      "\(candidateRoot)/runtimes",
-      "\(candidateRoot)/COMMON.md",
-    ])
-
+  /// Unset and empty overrides use the fixed home-relative checkout, even when ancestors have repository markers.
+  @Test(arguments: [[String: String](), ["AGENTS_REPO_ROOT": ""]])
+  func defaultsToSharedCheckout(environment: [String: String]) throws {
+    let expectedRoot = "/test-home/.local/share/agents"
+    let paths = Set(
+      [expectedRoot, "/test-home"].flatMap { root in
+        ["skills", "runtimes", "COMMON.md"].map { "\(root)/\($0)" }
+      }
+    )
     let root = try RepoRootLocator.locateRepoRoot(
-      environment: [:],
-      currentDirectoryPath: "/repo/skills/refresh-skill",
-      fileExistsAtPath: { paths.contains($0) }
+      environment: environment,
+      homeDirectory: URL(fileURLWithPath: "/test-home"),
+      fileExistsAtPath: paths.contains
     )
 
-    #expect(root.path == candidateRoot)
+    #expect(root.path == expectedRoot)
   }
 
-  /// Throws a clear error when no marker combination is present.
-  @Test func throwsWhenNoRepositoryRootMarkersFound() throws {
+  /// Missing or incomplete default checkouts fail clearly instead of selecting an ancestor with repository markers.
+  @Test(arguments: [["skills"], ["runtimes"], ["COMMON.md"], ["skills", "runtimes", "COMMON.md"]])
+  func rejectsIncompleteDefaultCheckout(missingMarkers: [String]) throws {
+    let expectedRoot = "/test-home/.local/share/agents"
+    let paths = Set(
+      ["skills", "runtimes", "COMMON.md"].flatMap { marker in
+        ["/test-home/\(marker)"] + (missingMarkers.contains(marker) ? [] : ["\(expectedRoot)/\(marker)"])
+      }
+    )
     let error = try #require(throws: ToolError.self) {
       try RepoRootLocator.locateRepoRoot(
         environment: [:],
-        currentDirectoryPath: "/",
-        fileExistsAtPath: { _ in false }
+        homeDirectory: URL(fileURLWithPath: "/test-home"),
+        fileExistsAtPath: paths.contains
       )
     }
 
-    #expect(error.description == RepoRootLocator.missingRootError)
+    #expect(error.description.contains(expectedRoot))
+    #expect(error.description.contains("AGENTS_REPO_ROOT"))
   }
 }
