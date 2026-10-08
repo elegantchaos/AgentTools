@@ -18,12 +18,12 @@ struct RefreshTool {
   /// Finds each runtime's command.
   let locator: RuntimeCommandLocator
 
-  /// Creates the tool for the Agents repository that contains the working directory, or `AGENTS_REPO_ROOT`.
+  /// Creates the tool for `AGENTS_REPO_ROOT`, or the shared checkout at `~/.local/share/agents`.
   static func current() throws -> RefreshTool {
     let fileManager = FileManager.default
     let repoRoot = try RepoRootLocator.locateRepoRoot(
       environment: ProcessInfo.processInfo.environment,
-      currentDirectoryPath: fileManager.currentDirectoryPath,
+      homeDirectory: fileManager.homeDirectoryForCurrentUser,
       fileExistsAtPath: fileManager.fileExists(atPath:)
     )
     return RefreshTool(repoRoot: repoRoot, locator: .current)

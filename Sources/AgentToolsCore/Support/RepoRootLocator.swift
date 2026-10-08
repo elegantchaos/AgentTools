@@ -7,33 +7,23 @@ import Foundation
 
 /// Resolves the shared Agents repository root for maintenance commands.
 struct RepoRootLocator {
-  /// Error thrown when root resolution fails.
-  static let missingRootError =
-    "Could not locate agents repository root. Run from the repo root or set AGENTS_REPO_ROOT."
-
-  /// Locates the repository root using environment override first, then marker scanning.
+  /// Uses an explicit environment override, or validates the shared checkout in the user's home directory.
   static func locateRepoRoot(
     environment: [String: String],
-    currentDirectoryPath: String,
+    homeDirectory: URL,
     fileExistsAtPath: (String) -> Bool
   ) throws -> URL {
     if let explicitRoot = environment["AGENTS_REPO_ROOT"], !explicitRoot.isEmpty {
       return URL(fileURLWithPath: explicitRoot).standardizedFileURL
     }
 
-    var candidate = URL(fileURLWithPath: currentDirectoryPath).standardizedFileURL
-
-    while true {
-      if isRepositoryRoot(candidate, fileExistsAtPath: fileExistsAtPath) {
-        return candidate
-      }
-
-      let parent = candidate.deletingLastPathComponent()
-      if parent.path == candidate.path {
-        throw ToolError(missingRootError)
-      }
-      candidate = parent
+    let defaultRoot = homeDirectory.appendingPathComponent(".local/share/agents").standardizedFileURL
+    guard isRepositoryRoot(defaultRoot, fileExistsAtPath: fileExistsAtPath) else {
+      throw ToolError(
+        "Agents repository not found at \(defaultRoot.path). Expected skills/, runtimes/, and COMMON.md. Set AGENTS_REPO_ROOT to use a different checkout."
+      )
     }
+    return defaultRoot
   }
 
   /// Returns true when the directory has the expected root markers.

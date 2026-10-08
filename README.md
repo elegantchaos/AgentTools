@@ -23,7 +23,7 @@ agt <command>
 
 Show the installed version with `agt --version`.
 
-Run `agt refresh`, `agt rules` and `agt skills` from the root of the Agents repository, or set `AGENTS_REPO_ROOT` to use a different checkout. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure` and `agt calendar` run anywhere.
+`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure` and `agt calendar` run anywhere.
 
 ### Refresh
 
