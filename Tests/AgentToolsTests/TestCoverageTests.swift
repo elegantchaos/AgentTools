@@ -40,15 +40,14 @@ struct TestCoverageTests {
     #expect(coverage.warnings.isEmpty)
   }
 
-  /// A package with a test target the scheme does not run is not covered; it is named in a warning, with whether it is
-  /// tested separately.
+  /// A package with a test target the scheme does not run is not covered. It is named in a warning when it will be
+  /// tested separately; a package the submodule policy leaves untested is not.
   @Test func warnsAboutMissingTargets() {
     let coverage = check(appTests([TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests")]))
     #expect(coverage.schemes.isEmpty)
     #expect(
       coverage.warnings == [
-        "Dependencies/Core (Core): scheme App (test plan Full Validation) does not run CoreUITests; testing the package separately.",
-        "Dependencies/Keychain (Keychain): scheme App (test plan Full Validation) does not run KeychainTests; the package is not tested separately.",
+        "Dependencies/Core (Core): scheme App (test plan Full Validation) does not run CoreUITests; testing the package separately."
       ]
     )
   }

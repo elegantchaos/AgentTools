@@ -17,12 +17,13 @@ Full validation runs local package tests through the product schemes where it ca
 
 - A product scheme's test plan named `Full Validation` is run when it exists, with `-testPlan`. Otherwise the scheme's default tests run. Projects can keep a quicker default plan for working in Xcode.
 - A package is covered when the product schemes run every one of its test targets in full, without selecting or skipping individual tests, and it is a workspace member. Covered packages get no test steps of their own.
-- Every other product package with tests is named in a warning, giving the missing test targets or the missing workspace membership, and is tested separately, unless the submodule policy leaves it untested. Validation does not fail because of a gap.
-- The check covers scheme testables as well as test plans. Packages in submodules the policy does not test are still examined when the product uses them, so the check reports them.
+- Every other product package that validation would test is named in a warning, giving the missing test targets or the missing workspace membership, and is tested separately. Validation does not fail because of a gap. A package the submodule policy leaves untested is not warned about: whether its tests run is the scheme's choice, and a warning on every run would be ignored.
+- The check covers scheme testables as well as test plans. Packages in submodules the policy does not test are still examined when the product uses them, so `--plan` can say when a product scheme runs their tests.
 - A package tested separately runs through a shared scheme for it only when that scheme runs all of its tests and it is a workspace member; otherwise in its own directory. Generated package schemes are never used through a workspace.
 
 ## Alternatives
 
+- Rejected: warning about packages the submodule policy leaves untested. Bookish's scheme deliberately runs some submodules' tests and not others, so the warning would repeat on every run without calling for action.
 - Rejected: failing validation when a package's tests are not covered. A gap costs time when it is tested separately, never coverage, and the warning names it.
 - Rejected: always testing every package separately, even when the product scheme already runs its tests. It repeats work: on Bookish, the per-package plan took about 1.8 times as long warm with the simulator pre-booted, and 3.5 times without, though the runs were on different commits.
 - Rejected: requiring a `Full Validation` plan. Schemes that list their tests directly, as Bookish's does, get the same speed and coverage check without one.
