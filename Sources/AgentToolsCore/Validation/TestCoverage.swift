@@ -30,26 +30,23 @@ struct TestCoverage: Equatable {
 
     for package in packages where package.inProduct && package.hasTests && !excluded.contains(package.name) {
       let directory = ValidationPaths.canonical(package.directory)
-      let listing = schemeTests.keys.sorted().filter { scheme in
-        schemeTests[scheme]?.targets.contains { ValidationPaths.canonical($0.container) == directory } ?? false
-      }
-      let listed = Set(
-        listing.flatMap { scheme in
-          (schemeTests[scheme]?.targets ?? []).filter { ValidationPaths.canonical($0.container) == directory }.map(\.name)
-        })
-      let missing = package.testTargets.filter { !listed.contains($0) }
-
-      if let scheme = listing.first, missing.isEmpty, members.contains(directory) {
+      let listing = schemeTests.keys.sorted().filter { !(schemeTests[$0]?.targets(in: directory).isEmpty ?? true) }
+      let complete = Set(listing.flatMap { completeTargetNames(in: schemeTests[$0], directory: directory) })
+      if let scheme = listing.first, members.contains(directory), complete.isSuperset(of: package.testTargets) {
         schemes[directory] = scheme
         continue
       }
 
+      let partial = Set(listing.flatMap { schemeTests[$0]?.targets(in: directory).filter(\.isFiltered).map(\.name) ?? [] })
       let runner = describe(listing.isEmpty ? schemeTests.keys.sorted() : listing, in: schemeTests)
       let problem: String
       if !listing.isEmpty, !members.contains(directory) {
         problem = "\(runner) lists its tests, but Xcode skips them because the package is not a workspace member"
       } else {
-        problem = "\(runner) does not run \(missing.joined(separator: ", "))"
+        let absent = package.testTargets.filter { !complete.contains($0) && !partial.contains($0) }
+        let filtered = package.testTargets.filter { !complete.contains($0) && partial.contains($0) }
+        let parts = (absent.isEmpty ? [] : ["does not run \(absent.joined(separator: ", "))"]) + (filtered.isEmpty ? [] : ["runs only some tests of \(filtered.joined(separator: ", "))"])
+        problem = "\(runner) \(parts.joined(separator: ", and "))"
       }
       let action = separately.contains(directory) ? "testing the package separately" : "the package is not tested separately"
       let path = directory == repo ? "." : directory.hasPrefix("\(repo)/") ? String(directory.dropFirst(repo.count + 1)) : directory
@@ -60,6 +57,11 @@ struct TestCoverage: Equatable {
 }
 
 extension TestCoverage {
+  /// Returns the names of the targets of the package in `directory` that `tests` runs without filtering.
+  private static func completeTargetNames(in tests: SchemeTests?, directory: String) -> [String] {
+    tests?.targets(in: directory).filter { !$0.isFiltered }.map(\.name) ?? []
+  }
+
   /// Describes the named schemes and where their tests come from, such as `scheme App (test plan Full Validation)`.
   private static func describe(_ names: [String], in schemeTests: [String: SchemeTests]) -> String {
     names.map { name in "scheme \(name) (\(schemeTests[name]?.source ?? "tests"))" }.joined(separator: " or ")

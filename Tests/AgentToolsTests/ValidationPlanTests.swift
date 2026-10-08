@@ -393,9 +393,25 @@ struct ValidationPlanTests {
       ]
     )
     #expect(steps[0].arguments.contains("-testPlan") == false)
+    #expect(steps[2].arguments.contains("-testPlan") == false)
     let summaries = ValidationPlan.packageSummaries(for: project, testSubmodules: .changed, excludedPackages: ["Keychain"], repoPath: "/repo")
     #expect(summaries.contains("Dependencies/Core (Core): tested by scheme App"))
     #expect(summaries.contains("Dependencies/Kit (Kit): tested by scheme App"))
+  }
+
+  /// A separately tested package goes through a shared scheme only when the scheme runs all of its tests and the
+  /// package is a workspace member; otherwise it is tested in its own directory.
+  @Test func separateTestsUseASharedSchemeOnlyWhenItRunsEverything() {
+    let complete = SchemeTests(testPlan: nil, source: "test plan Core", targets: [TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests"), TestTarget(container: "/repo/Dependencies/Core", name: "CoreUITests")])
+    let partial = SchemeTests(testPlan: nil, source: "test plan Core", targets: [TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests")])
+    let members: Set<String> = ["/repo/Dependencies/Core"]
+    func runsThrough(_ tests: SchemeTests?, members: Set<String>) -> Bool {
+      ValidationDiscovery.schemeTestsPackage(tests, packageDir: "/repo/Dependencies/Core", testTargets: ["CoreTests", "CoreUITests"], workspaceMembers: members)
+    }
+    #expect(runsThrough(complete, members: members))
+    #expect(runsThrough(partial, members: members) == false)
+    #expect(runsThrough(complete, members: []) == false)
+    #expect(runsThrough(nil, members: members) == false)
   }
 
   /// A scheme whose test action uses a test plan has tests, as does one with testables.

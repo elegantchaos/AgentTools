@@ -91,6 +91,63 @@ struct SchemeTestsTests {
     #expect(tests == SchemeTests(testPlan: nil, source: "test plan Unit", targets: [TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests")]))
   }
 
+  /// A plan target that selects or skips individual tests is read as filtered.
+  @Test func plansThatSelectOrSkipTestsAreFiltered() {
+    let plan = #"""
+      {"testTargets" : [
+        {"selectedTests" : ["CoreTests/testOne()"], "target" : {"containerPath" : "container:Dependencies/Core", "identifier" : "CoreTests", "name" : "CoreTests"}},
+        {"skippedTests" : ["KitTests/testSlow()"], "target" : {"containerPath" : "container:Dependencies/Kit", "identifier" : "KitTests", "name" : "KitTests"}},
+        {"skippedTests" : [], "target" : {"containerPath" : "container:Dependencies/Kit", "identifier" : "KitUITests", "name" : "KitUITests"}}
+      ], "version" : 1}
+      """#
+    let files = [schemePath: planScheme(["Full Validation.xctestplan"]), "/repo/Full Validation.xctestplan": plan]
+    let tests = SchemeTests.read(schemeFile: schemePath) { files[$0] }
+    #expect(
+      tests?.targets == [
+        TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests", isFiltered: true),
+        TestTarget(container: "/repo/Dependencies/Kit", name: "KitTests", isFiltered: true),
+        TestTarget(container: "/repo/Dependencies/Kit", name: "KitUITests"),
+      ]
+    )
+  }
+
+  /// A testable that skips individual tests, or runs only selected ones, is read as filtered.
+  @Test func testablesThatSelectOrSkipTestsAreFiltered() {
+    let scheme = """
+      <Scheme><TestAction><Testables>
+         <TestableReference skipped = "NO">
+            <BuildableReference BuildableName = "CoreTests" ReferencedContainer = "container:Dependencies/Core"></BuildableReference>
+            <SkippedTests><Test Identifier = "CoreTests/testSlow()"></Test></SkippedTests>
+         </TestableReference>
+         <TestableReference skipped = "NO" useTestSelectionWhitelist = "YES">
+            <BuildableReference BuildableName = "KitTests" ReferencedContainer = "container:Dependencies/Kit"></BuildableReference>
+            <SelectedTests><Test Identifier = "KitTests/testOne()"></Test></SelectedTests>
+         </TestableReference>
+      </Testables></TestAction></Scheme>
+      """
+    let tests = SchemeTests.read(schemeFile: schemePath) { $0 == schemePath ? scheme : nil }
+    #expect(
+      tests?.targets == [
+        TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests", isFiltered: true),
+        TestTarget(container: "/repo/Dependencies/Kit", name: "KitTests", isFiltered: true),
+      ]
+    )
+  }
+
+  /// A scheme runs all of a package's tests only when it runs every one of its test targets unfiltered.
+  @Test func runsAllTestsNeedsEveryTargetUnfiltered() {
+    let tests = SchemeTests(
+      testPlan: nil, source: "testables",
+      targets: [
+        TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests"), TestTarget(container: "/repo/Dependencies/Core", name: "CoreUITests", isFiltered: true),
+        TestTarget(container: "/repo/Dependencies/Kit", name: "KitTests"),
+      ])
+    #expect(tests.runsAllTests(["KitTests"], in: "/repo/Dependencies/Kit"))
+    #expect(tests.runsAllTests(["CoreTests"], in: "/repo/Dependencies/Core"))
+    #expect(tests.runsAllTests(["CoreTests", "CoreUITests"], in: "/repo/Dependencies/Core") == false)
+    #expect(tests.runsAllTests(["KitTests", "KitUITests"], in: "/repo/Dependencies/Kit") == false)
+  }
+
   /// A plan that cannot be read lists no targets.
   @Test func unreadablePlanListsNoTargets() {
     let tests = SchemeTests.read(schemeFile: schemePath) { $0 == schemePath ? planScheme(["Full Validation.xctestplan"]) : nil }

@@ -53,6 +53,18 @@ struct TestCoverageTests {
     )
   }
 
+  /// A package whose test target the scheme filters is not covered, and the warning says which targets run only in part.
+  @Test func warnsAboutFilteredTargets() {
+    let coverage = check(
+      appTests([TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests", isFiltered: true), TestTarget(container: "/repo/Dependencies/Keychain", name: "KeychainTests")]))
+    #expect(coverage.schemes == ["/repo/Dependencies/Keychain": "App"])
+    #expect(
+      coverage.warnings == [
+        "Dependencies/Core (Core): scheme App (test plan Full Validation) does not run CoreUITests, and runs only some tests of CoreTests; testing the package separately."
+      ]
+    )
+  }
+
   /// A listed package that is not a workspace member is skipped by Xcode, so it is not covered.
   @Test func warnsAboutPackagesOutsideTheWorkspace() {
     let coverage = check(

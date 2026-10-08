@@ -319,6 +319,12 @@ final class ValidationTool {
       else { return false }
       return XcodeSchemes.hasTests(schemeFile: contents)
     }
+    /// Returns the tests of the shared scheme named `scheme`, or `nil` when it has no scheme file.
+    func schemeTests(named scheme: String) -> SchemeTests? {
+      guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }) else { return nil }
+      return SchemeTests.read(schemeFile: "\(repoPath)/\(file)") { try? String(contentsOfFile: $0, encoding: .utf8) }
+    }
+    let workspaceMembers = Set(ValidationDiscovery.workspaceMemberPackages(container: container))
     let changedSubmodules = try changedSubmodulePaths()
     var packages: [LocalPackage] = []
     var descriptions: [String: SwiftPackageDescription] = [:]
@@ -339,17 +345,19 @@ final class ValidationTool {
       if submodule == nil, relativePath(packageDir).isEmpty {
         rootPackage = description
       }
+      let testTargets = description.targets.filter { $0.type == "test" }.map(\.name)
       packages.append(
         LocalPackage(
           directory: packageDir,
           name: description.name,
           hasTests: description.hasTestTargets,
           scheme: LocalPackage.scheme(for: description, in: schemes).flatMap { scheme in
-            ValidationDiscovery.isOpenedDirectly(packageDir: packageDir, container: container, repoPath: repoPath) || schemeFileHasTests(scheme) ? scheme : nil
+            ValidationDiscovery.isOpenedDirectly(packageDir: packageDir, container: container, repoPath: repoPath)
+              || ValidationDiscovery.schemeTestsPackage(schemeTests(named: scheme), packageDir: packageDir, testTargets: testTargets, workspaceMembers: workspaceMembers) ? scheme : nil
           },
           submodule: submodule,
           submoduleChanged: submoduleChanged,
-          testTargets: description.targets.filter { $0.type == "test" }.map(\.name)
+          testTargets: testTargets
         )
       )
     }
@@ -391,17 +399,17 @@ final class ValidationTool {
 
     let productSchemes = try self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
     let schemesWithTests = Set(productSchemes.filter(schemeFileHasTests))
-    var schemeTests: [String: SchemeTests] = [:]
-    for scheme in schemesWithTests {
-      guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }) else { continue }
-      schemeTests[scheme] = SchemeTests.read(schemeFile: "\(repoPath)/\(file)") { try? String(contentsOfFile: $0, encoding: .utf8) }
+    let productTests = Dictionary(uniqueKeysWithValues: schemesWithTests.compactMap { scheme in schemeTests(named: scheme).map { (scheme, $0) } })
+    var testPlans = productTests.compactMapValues(\.testPlan)
+    for scheme in packages.compactMap(\.scheme) where testPlans[scheme] == nil {
+      testPlans[scheme] = schemeTests(named: scheme)?.testPlan
     }
     let coverage = TestCoverage.check(
       packages: packages,
       tested: ValidationPlan.testedPackages(packages, testSubmodules: config.testSubmodules, excluded: config.excludedPackages),
       excluded: config.excludedPackages,
-      schemeTests: schemeTests,
-      workspaceMembers: Set(ValidationDiscovery.workspaceMemberPackages(container: container)),
+      schemeTests: productTests,
+      workspaceMembers: workspaceMembers,
       repoPath: repoPath
     )
     for index in packages.indices {
@@ -446,7 +454,7 @@ final class ValidationTool {
       simulatorNotes: testPlatforms.compactMap { simulators[$0]?.note },
       packages: packages,
       unexaminedSubmodulePackages: unexamined,
-      testPlans: schemeTests.compactMapValues(\.testPlan),
+      testPlans: testPlans,
       coverageWarnings: coverage.warnings
     )
   }

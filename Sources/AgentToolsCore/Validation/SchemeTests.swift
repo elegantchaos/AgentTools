@@ -41,6 +41,19 @@ struct SchemeTests: Equatable {
     return SchemeTests(testPlan: full == nil ? nil : name, source: "test plan \(name)", targets: targets.map { resolve($0, in: directory) })
   }
 
+  /// Returns whether the scheme runs every test of each of `testTargets`, the test targets of the package in
+  /// `directory`: each is listed for that package and none is filtered.
+  func runsAllTests(_ testTargets: [String], in directory: String) -> Bool {
+    let complete = Set(targets(in: directory).filter { !$0.isFiltered }.map(\.name))
+    return testTargets.allSatisfy(complete.contains)
+  }
+
+  /// Returns the targets the scheme lists for the package or project in `directory`.
+  func targets(in directory: String) -> [TestTarget] {
+    let container = ValidationPaths.canonical(directory)
+    return targets.filter { ValidationPaths.canonical($0.container) == container }
+  }
+
   /// Returns the directory that holds the workspace or project containing the scheme file at `path`.
   static func containerDirectory(ofSchemeFile path: String) -> String? {
     let components = URL(fileURLWithPath: path).pathComponents
@@ -57,30 +70,6 @@ extension SchemeTests {
 
     /// Whether the scheme runs this plan by default.
     let isDefault: Bool
-  }
-
-  /// The parts of a test plan file that list its targets.
-  private struct PlanFile: Decodable {
-    /// The plan's test targets.
-    let testTargets: [Entry]
-
-    /// One entry of `testTargets`.
-    struct Entry: Decodable {
-      /// Whether the plan runs the target; missing means enabled.
-      let enabled: Bool?
-
-      /// The target.
-      let target: Target
-
-      /// The target's location.
-      struct Target: Decodable {
-        /// The target's `container:` path.
-        let containerPath: String
-
-        /// The target's name.
-        let name: String
-      }
-    }
   }
 
   /// Returns the test plans a scheme file refers to, in order.
@@ -102,14 +91,32 @@ extension SchemeTests {
         let name = attribute("BlueprintName", in: body) ?? attribute("BuildableName", in: body)?.replacing(".xctest", with: ""),
         let container = attribute("ReferencedContainer", in: body)
       else { return nil }
-      return TestTarget(container: stripContainer(container), name: name)
+      let isFiltered = attribute("useTestSelectionWhitelist", in: attributes) == "YES" || body.contains("<SkippedTests") || body.contains("<SelectedTests")
+      return TestTarget(container: stripContainer(container), name: name, isFiltered: isFiltered)
     }
   }
 
-  /// Returns a test plan's enabled targets, as relative containers and names; a plan that cannot be decoded has none.
+  /// Returns a test plan's enabled targets, as relative containers and names, marking those that select or skip
+  /// individual tests as filtered; a plan that cannot be decoded has none.
+  ///
+  /// The plan is read as plain JSON, so any form of test selection Xcode writes counts as a filter.
   private static func planTargets(json: String) -> [TestTarget] {
-    guard let plan = try? JSONDecoder().decode(PlanFile.self, from: Data(json.utf8)) else { return [] }
-    return plan.testTargets.filter { $0.enabled ?? true }.map { TestTarget(container: stripContainer($0.target.containerPath), name: $0.target.name) }
+    guard let plan = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any], let entries = plan["testTargets"] as? [[String: Any]] else { return [] }
+    return entries.compactMap { entry in
+      guard entry["enabled"] as? Bool != false, let target = entry["target"] as? [String: Any],
+        let container = target["containerPath"] as? String, let name = target["name"] as? String
+      else { return nil }
+      return TestTarget(container: stripContainer(container), name: name, isFiltered: isSelection(entry["selectedTests"]) || isSelection(entry["skippedTests"]))
+    }
+  }
+
+  /// Returns whether a plan's `selectedTests` or `skippedTests` value names any tests.
+  private static func isSelection(_ value: Any?) -> Bool {
+    switch value {
+      case let list as [Any]: !list.isEmpty
+      case let object as [String: Any]: !object.isEmpty
+      default: false
+    }
   }
 
   /// Returns the name Xcode gives a test plan: its file name without the extension.
@@ -119,7 +126,7 @@ extension SchemeTests {
 
   /// Returns `target` with its container resolved against `directory`.
   private static func resolve(_ target: TestTarget, in directory: String) -> TestTarget {
-    TestTarget(container: resolve(target.container, in: directory), name: target.name)
+    TestTarget(container: resolve(target.container, in: directory), name: target.name, isFiltered: target.isFiltered)
   }
 
   /// Returns `path` resolved against `directory`, unless it is absolute.

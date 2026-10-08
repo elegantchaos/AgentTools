@@ -109,6 +109,13 @@ enum ValidationDiscovery {
     container.isEmpty && ValidationPaths.canonical(packageDir) == ValidationPaths.canonical(repoPath)
   }
 
+  /// Returns whether a shared scheme with `tests` can test the package in `packageDir` on its own: the package is a
+  /// workspace member, and the scheme runs every test of each of its `testTargets`.
+  static func schemeTestsPackage(_ tests: SchemeTests?, packageDir: String, testTargets: [String], workspaceMembers: Set<String>) -> Bool {
+    guard let tests, Set(workspaceMembers.map(ValidationPaths.canonical)).contains(ValidationPaths.canonical(packageDir)) else { return false }
+    return tests.runsAllTests(testTargets, in: packageDir)
+  }
+
   /// Returns the directories of the packages a workspace lists as members, which are the only packages whose tests
   /// Xcode runs when a workspace scheme or test plan lists them. A project, or no container, has none.
   static func workspaceMemberPackages(container: [String]) -> [String] {

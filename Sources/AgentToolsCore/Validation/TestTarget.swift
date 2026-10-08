@@ -10,4 +10,7 @@ struct TestTarget: Hashable {
 
   /// The target's name.
   let name: String
+
+  /// Whether only some of the target's tests run, because the scheme or plan selects or skips individual tests.
+  var isFiltered = false
 }

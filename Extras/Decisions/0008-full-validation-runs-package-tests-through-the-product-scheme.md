@@ -16,10 +16,10 @@ A scheme or test plan lists a package's tests by its `container:` path, and Xcod
 Full validation runs local package tests through the product schemes where it can, and checks that nothing is missed.
 
 - A product scheme's test plan named `Full Validation` is run when it exists, with `-testPlan`. Otherwise the scheme's default tests run. Projects can keep a quicker default plan for working in Xcode.
-- A package is covered when the product schemes run every one of its test targets and it is a workspace member. Covered packages get no test steps of their own.
+- A package is covered when the product schemes run every one of its test targets in full, without selecting or skipping individual tests, and it is a workspace member. Covered packages get no test steps of their own.
 - Every other product package with tests is named in a warning, giving the missing test targets or the missing workspace membership, and is tested separately, unless the submodule policy leaves it untested. Validation does not fail because of a gap.
 - The check covers scheme testables as well as test plans. Packages in submodules the policy does not test are still examined when the product uses them, so the check reports them.
-- A package tested separately runs through a shared scheme for it only when that scheme lists its tests; otherwise in its own directory. Generated package schemes are never used through a workspace.
+- A package tested separately runs through a shared scheme for it only when that scheme runs all of its tests and it is a workspace member; otherwise in its own directory. Generated package schemes are never used through a workspace.
 
 ## Alternatives
 

@@ -3,8 +3,8 @@
 ## 3.10.0
 
 - Full validation runs a product scheme's test plan named `Full Validation` when it has one, and otherwise its default tests.
-- Full validation checks that the product schemes run the tests of every local package in the product. A package they fully run, from a workspace member, gets no test step of its own. Any other package is named in a warning, with the test targets the schemes miss or a note that it is not a workspace member, and is tested separately unless the submodule policy leaves it untested. Packages in submodules the policy does not test are now examined when the product uses them, so the check covers them too.
-- Fixes full validation failing with "Scheme … is not currently configured for the test action" for packages that are workspace members. Xcode's generated package schemes have no test action inside a workspace, so such packages are tested in their own directory unless a scheme runs their tests.
+- Full validation checks that the product schemes run the tests of every local package in the product. A package whose test targets they run in full, without selecting or skipping individual tests, and which is a workspace member, gets no test step of its own. Any other package is named in a warning, with the test targets the schemes miss or run only in part, or a note that it is not a workspace member, and is tested separately unless the submodule policy leaves it untested. Packages in submodules the policy does not test are now examined when the product uses them, so the check covers them too.
+- Fixes full validation failing with "Scheme … is not currently configured for the test action" for packages that are workspace members. Xcode's generated package schemes have no test action inside a workspace, so such packages are tested in their own directory unless a shared scheme runs all of their tests.
 - A scheme whose test action uses a test plan counts as having tests.
 
 ## 3.9.0
