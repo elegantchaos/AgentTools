@@ -3,6 +3,7 @@
 //  Copyright © 2026 Elegant Chaos Limited. All rights reserved.
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+import Darwin
 import Foundation
 
 /// Brings this machine's agent runtimes up to date with the shared Agents repository.
@@ -66,17 +67,50 @@ struct RefreshTool {
     }
   }
 
-  /// Runs a command with the terminal as its output, throwing when it fails.
-  private func runPassingThrough(_ command: URL, _ arguments: [String]) throws {
+  /// Announces and runs plugin maintenance in this process's group, with inherited output and EOF on input.
+  func runPassingThrough(_ command: URL, _ arguments: [String], report: (String) -> Void = { print($0) }) throws {
+    let description = ([command.path] + arguments).joined(separator: " ")
+    report("refresh: \(description)")
     fflush(stdout)
-    let process = Process()
-    process.executableURL = command
-    process.arguments = arguments
-    process.currentDirectoryURL = repoRoot
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-      throw ToolError("\(([command.path] + arguments).joined(separator: " ")) failed with status \(process.terminationStatus)")
+
+    var actions: posix_spawn_file_actions_t?
+    let initializeStatus = posix_spawn_file_actions_init(&actions)
+    guard initializeStatus == 0 else {
+      throw ToolError("Could not prepare \(command.path): \(String(cString: strerror(initializeStatus))).")
+    }
+    defer { posix_spawn_file_actions_destroy(&actions) }
+    let directoryStatus = posix_spawn_file_actions_addchdir(&actions, repoRoot.path)
+    guard directoryStatus == 0 else {
+      throw ToolError("Could not set the working directory for \(command.path): \(String(cString: strerror(directoryStatus))).")
+    }
+    let inputStatus = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)
+    guard inputStatus == 0 else {
+      throw ToolError("Could not redirect input for \(command.path): \(String(cString: strerror(inputStatus))).")
+    }
+
+    let argv = ([command.path] + arguments).map { strdup($0) } + [nil]
+    let envp = ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+    defer {
+      for string in argv + envp {
+        free(string)
+      }
+    }
+    var pid = pid_t()
+    let spawnStatus = posix_spawn(&pid, command.path, &actions, nil, argv, envp)
+    guard spawnStatus == 0 else {
+      throw ToolError("Could not start \(command.path): \(String(cString: strerror(spawnStatus))).")
+    }
+
+    var status: Int32 = 0
+    while waitpid(pid, &status, 0) == -1 {
+      guard errno == EINTR else {
+        throw ToolError("Lost track of \(command.path): \(String(cString: strerror(errno))).")
+      }
+    }
+    let signal = status & 0x7f
+    let exitStatus = signal == 0 ? (status >> 8) & 0xff : 128 + signal
+    guard exitStatus == 0 else {
+      throw ToolError("\(description) failed with status \(exitStatus)")
     }
   }
 

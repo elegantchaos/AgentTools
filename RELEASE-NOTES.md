@@ -1,5 +1,10 @@
 # Release Notes
 
+## 3.10.1
+
+- Fixes `agt refresh` hanging in a normal terminal after sandbox configuration. Plugin commands share `agt`'s process group, so terminal cleanup completes and Ctrl-C reaches the children, and receive `/dev/null` as input.
+- Prints each plugin command before launching it, making the current refresh step visible.
+
 ## 3.10.0
 
 - Full validation runs a product scheme's test plan named `Full Validation` when it has one, and otherwise its default tests.

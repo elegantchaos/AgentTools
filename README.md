@@ -33,7 +33,7 @@ Bring this machine's Claude Code and Codex up to date with the Agents repository
 agt refresh
 ```
 
-It warns about plugin copies of `ensure-agt.sh` that differ from the `baseline` plugin's, runs `agt skills sync --all`, `agt skills link` and `agt sandbox configure`, then installs or refreshes every plugin in the repository's marketplace files (`.claude-plugin/marketplace.json` for Claude Code and `.agents/plugins/marketplace.json` for Codex). Each runtime's command is found on `PATH`, or else in its usual install locations, including the copies bundled with the Claude and ChatGPT apps; a runtime that is not installed is skipped. Every step is safe to repeat. It does not update `agt` itself.
+It warns about plugin copies of `ensure-agt.sh` that differ from the `baseline` plugin's, runs `agt skills sync --all`, `agt skills link` and `agt sandbox configure`, then installs or refreshes every plugin in the repository's marketplace files (`.claude-plugin/marketplace.json` for Claude Code and `.agents/plugins/marketplace.json` for Codex). Each runtime's command is found on `PATH`, or else in its usual install locations, including the copies bundled with the Claude and ChatGPT apps; a runtime that is not installed is skipped. Plugin commands are printed before launch and run with `/dev/null` as input. They share `agt`'s process group so terminal output and cleanup can complete and Ctrl-C reaches the children. Every step is safe to repeat. It does not update `agt` itself.
 
 ### Rules
 
