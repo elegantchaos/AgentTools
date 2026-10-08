@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-10-08](2026-10-08.md) — Reviewed PR 3; found false coverage for filtered test plans and incomplete shared-scheme fallback routing. Focused tests and full AgentTools validation passed.
+
 - [2026-07-23](2026-07-23.md) — Initial standalone package migration.
 - [2026-09-23](2026-09-23.md) — Moved shared rules to `runtimes/codex`; linked skills into Codex and Claude Code runtime directories.
 - [2026-09-24](2026-09-24.md) — Moved `validate` from ReleaseTools into `agt`; planned IDE-aware validation for 2.2; started the decision log.
@@ -7,4 +9,5 @@
 - [2026-09-26](2026-09-26.md) — Fixed a launch crash on macOS 26 in Xcode 27 builds (`swift_initBorrow` from swift-collections 1.7.0) with a swift-collections 1.7.1 floor; CI runs an Xcode 27 build on macOS 26.
 - [2026-09-28](2026-09-28.md) — Profiled Bookish validation and rejected a shared Xcode DerivedData experiment; investigated package aggregation and SwiftPM 6.4.
 - [2026-09-29](2026-09-29.md) — `agt sandbox configure` and `agt refresh` replace the Agents repository's last maintenance scripts, making `agt` its only dependency ([0006](../Decisions/0006-agt-is-the-agents-repositorys-only-dependency.md)); Codex config edited in place, including multi-line arrays and dotted keys; runtime commands found outside `PATH`.
-- [2026-10-07](2026-10-07.md) — Calendar access spikes: an app bundle launched with `open`, then a single `agt` relaunching itself with the private responsibility-disclaim spawn attribute, each received its own calendar permission, pinned to its code hash; the same binary run directly from the agent gets nothing. Added `agt calendar` ([0007](../Decisions/0007-calendar-access-runs-in-agt-as-its-own-responsible-process.md)).
+- [2026-09-30](2026-09-30.md) — Open bug found on Bookish: a workspace member that a project or another package also references has no test action, so full validation routes its tests through a scheme `xcodebuild` refuses; Bookish excludes the packages for now, with ideas for the fix.
+- [2026-10-07](2026-10-07.md) — Calendar access spikes: an app bundle launched with `open`, then a single `agt` relaunching itself with the private responsibility-disclaim spawn attribute, each received its own calendar permission, pinned to its code hash; the same binary run directly from the agent gets nothing. Added `agt calendar` ([0007](../Decisions/0007-calendar-access-runs-in-agt-as-its-own-responsible-process.md)). Found the cause of the package test-action bug; full validation now runs package tests through the product scheme or its `Full Validation` test plan, with a coverage check ([0008](../Decisions/0008-full-validation-runs-package-tests-through-the-product-scheme.md)).

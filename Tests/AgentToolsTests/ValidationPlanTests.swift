@@ -318,19 +318,32 @@ struct ValidationPlanTests {
     #expect(packages == ["Dependencies/Kit", "Shared", "Dependencies/Core"].map { ValidationPaths.canonical(root.appendingPathComponent($0).path) })
   }
 
-  @Test func rootPackagesAreWorkspaceMembersOnly() throws {
-    let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AgentTools-Roots-\(UUID().uuidString)")
+  /// A workspace's package members are its `group:` and `container:` entries that are not projects.
+  @Test func workspaceMemberPackagesExcludeProjects() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AgentTools-Members-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }
     let workspace = root.appendingPathComponent("App.xcworkspace")
     try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
     try #"<Workspace><FileRef location = "group:App.xcodeproj"></FileRef><FileRef location = "group:Dependencies/Core"></FileRef></Workspace>"#.write(
       to: workspace.appendingPathComponent("contents.xcworkspacedata"), atomically: true, encoding: .utf8)
 
-    let roots = ValidationDiscovery.rootPackages(container: ["-workspace", workspace.path], repoPath: root.path).map(ValidationPaths.canonical)
+    let members = ValidationDiscovery.workspaceMemberPackages(container: ["-workspace", workspace.path]).map(ValidationPaths.canonical)
 
-    #expect(roots == [ValidationPaths.canonical(root.appendingPathComponent("Dependencies/Core").path)])
-    #expect(ValidationDiscovery.rootPackages(container: ["-project", root.appendingPathComponent("App.xcodeproj").path], repoPath: root.path).isEmpty)
-    #expect(ValidationDiscovery.rootPackages(container: [], repoPath: "/repo") == ["/repo"])
+    #expect(members == [ValidationPaths.canonical(root.appendingPathComponent("Dependencies/Core").path)])
+    #expect(ValidationDiscovery.workspaceMemberPackages(container: ["-project", root.appendingPathComponent("App.xcodeproj").path]).isEmpty)
+    #expect(ValidationDiscovery.workspaceMemberPackages(container: []).isEmpty)
+  }
+
+  /// Only a package opened directly, with no workspace or project, gets schemes with a test action; workspace members
+  /// do not.
+  @Test(arguments: [
+    ([String](), "/repo", true),
+    ([String](), "/repo/Dependencies/Core", false),
+    (["-workspace", "/repo/App.xcworkspace"], "/repo", false),
+    (["-workspace", "/repo/App.xcworkspace"], "/repo/Dependencies/Core", false),
+  ])
+  func onlyAPackageOpenedDirectlyIsTestableThroughItsSchemes(container: [String], packageDir: String, expected: Bool) {
+    #expect(ValidationDiscovery.isOpenedDirectly(packageDir: packageDir, container: container, repoPath: "/repo") == expected)
   }
 
   @Test func productPackagesIncludeLocalDependenciesTransitively() {
@@ -342,6 +355,68 @@ struct ValidationPlanTests {
     let json = #"{"name": "Core", "targets": [], "dependencies": [{"identity": "feedback", "type": "fileSystem", "path": "/repo/Feedback"}, {"identity": "files", "type": "sourceControl", "url": "https://example.com/files.git"}]}"#
     let package = try JSONDecoder().decode(SwiftPackageDescription.self, from: Data(json.utf8))
     #expect(package.localDependencyPaths == ["/repo/Feedback"])
+  }
+
+  /// Packages a product scheme already tests get no steps of their own, and the scheme's Full Validation plan is
+  /// selected.
+  @Test func schemeCoveredPackagesAreNotTestedAgain() {
+    var packages = examplePackages
+    packages[0].coveredBy = "App"
+    packages.append(LocalPackage(directory: "/repo/Dependencies/Kit", name: "Kit", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false, coveredBy: "App"))
+    var project = ValidationProject(
+      container: ["-workspace", "/repo/App.xcworkspace"],
+      productSchemes: ["App"],
+      schemesWithTests: ["App"],
+      buildPlatforms: [.macOS],
+      testPlatforms: [.macOS],
+      testDestinations: [.macOS: "platform=macOS"],
+      packages: packages
+    )
+    project.testPlans = ["App": "Full Validation"]
+
+    let steps = ValidationPlan.steps(
+      for: project,
+      testSubmodules: .changed,
+      excludedPackages: ["Keychain"],
+      paths: ValidationPaths(repoPath: "/repo"),
+      sandbox: EnclosingSandbox(isNested: false),
+      disableSwiftPMSandbox: false,
+      quiet: true
+    )
+
+    #expect(steps.map(\.summary) == ["build App (macOS)", "test App (macOS)", "test Commands-Package (macOS)"])
+    #expect(
+      steps[1].arguments == [
+        "xcodebuild", "-workspace", "/repo/App.xcworkspace", "-scheme", "App", "-testPlan", "Full Validation", "-destination", "platform=macOS",
+        "-derivedDataPath", "/repo/.build/agt/DerivedData", "-skipPackagePluginValidation", "-skipMacroValidation",
+        "-quiet", "CODE_SIGNING_ALLOWED=NO", "test",
+      ]
+    )
+    #expect(steps[0].arguments.contains("-testPlan") == false)
+    #expect(steps[2].arguments.contains("-testPlan") == false)
+    let summaries = ValidationPlan.packageSummaries(for: project, testSubmodules: .changed, excludedPackages: ["Keychain"], repoPath: "/repo")
+    #expect(summaries.contains("Dependencies/Core (Core): tested by scheme App"))
+    #expect(summaries.contains("Dependencies/Kit (Kit): tested by scheme App"))
+  }
+
+  /// A separately tested package goes through a shared scheme only when the scheme runs all of its tests and the
+  /// package is a workspace member; otherwise it is tested in its own directory.
+  @Test func separateTestsUseASharedSchemeOnlyWhenItRunsEverything() {
+    let complete = SchemeTests(testPlan: nil, source: "test plan Core", targets: [TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests"), TestTarget(container: "/repo/Dependencies/Core", name: "CoreUITests")])
+    let partial = SchemeTests(testPlan: nil, source: "test plan Core", targets: [TestTarget(container: "/repo/Dependencies/Core", name: "CoreTests")])
+    let members: Set<String> = ["/repo/Dependencies/Core"]
+    func runsThrough(_ tests: SchemeTests?, members: Set<String>) -> Bool {
+      ValidationDiscovery.schemeTestsPackage(tests, packageDir: "/repo/Dependencies/Core", testTargets: ["CoreTests", "CoreUITests"], workspaceMembers: members)
+    }
+    #expect(runsThrough(complete, members: members))
+    #expect(runsThrough(partial, members: members) == false)
+    #expect(runsThrough(complete, members: []) == false)
+    #expect(runsThrough(nil, members: members) == false)
+  }
+
+  /// A scheme whose test action uses a test plan has tests, as does one with testables.
+  @Test func schemeFilesWithTestPlansHaveTests() {
+    #expect(XcodeSchemes.hasTests(schemeFile: #"<TestAction><TestPlans><TestPlanReference reference = "container:Full Validation.xctestplan" default = "YES"></TestPlanReference></TestPlans></TestAction>"#))
   }
 
   /// Local packages in an app workspace: in-repo packages, changed and unchanged submodules, and packages

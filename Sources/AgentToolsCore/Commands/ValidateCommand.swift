@@ -19,7 +19,9 @@ struct ValidateCommand: AsyncParsableCommand {
     abstract: "Run the standard validation flow for a Swift repository.",
     discussion: """
       Run from the repository root. Builds and tests the Xcode workspace, discovered Swift packages, or \
-      Xcode project, in that order of preference. Validation never modifies source; run agt format first. \
+      Xcode project, in that order of preference. A product scheme's test plan named "Full Validation" is \
+      used when present. Local packages whose tests the product schemes run need no steps of their own; others are \
+      named in a warning and tested separately. Validation never modifies source; run agt format first. \
       Build products and logs are written to .build/agt; downloads use SwiftPM's and Xcode's standard caches. \
       Inside another sandbox, such as an agent's, SwiftPM's and Xcode's own sandboxes are turned off. \
       Discovery results, such as package descriptions and scheme destinations, are cached in .build/agt \

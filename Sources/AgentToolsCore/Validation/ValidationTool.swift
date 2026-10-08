@@ -229,6 +229,9 @@ final class ValidationTool {
     for note in discovered.simulatorNotes {
       print(note)
     }
+    for warning in discovered.coverageWarnings {
+      print("Warning: \(warning)")
+    }
     if config.planOnly {
       print("== Packages")
       let summaries = ValidationPlan.packageSummaries(
@@ -316,60 +319,102 @@ final class ValidationTool {
       else { return false }
       return XcodeSchemes.hasTests(schemeFile: contents)
     }
-    let rootPackages = Set(ValidationDiscovery.rootPackages(container: container, repoPath: repoPath).map(ValidationPaths.canonical))
+    /// Returns the tests of the shared scheme named `scheme`, or `nil` when it has no scheme file.
+    func schemeTests(named scheme: String) -> SchemeTests? {
+      guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }) else { return nil }
+      return SchemeTests.read(schemeFile: "\(repoPath)/\(file)") { try? String(contentsOfFile: $0, encoding: .utf8) }
+    }
+    let workspaceMembers = Set(ValidationDiscovery.workspaceMemberPackages(container: container))
     let changedSubmodules = try changedSubmodulePaths()
     var packages: [LocalPackage] = []
     var descriptions: [String: SwiftPackageDescription] = [:]
     var unexamined: [String] = []
     var rootPackage: SwiftPackageDescription?
-    for packageDir in packageDirs {
-      let submodule = SubmoduleStatus.enclosingSubmodule(of: packageDir, repoPath: repoPath)
-      let submoduleChanged = submodule.map(changedSubmodules.contains) ?? false
-      if submodule != nil, config.testSubmodules == .never || (config.testSubmodules == .changed && !submoduleChanged) {
-        unexamined.append(packageDir)
-        continue
-      }
-
+    /// Describes the package in `packageDir` and adds it to `packages`, recording a skipped step when it cannot be
+    /// described.
+    func examine(_ packageDir: String, submodule: String?, submoduleChanged: Bool) {
       let description: SwiftPackageDescription
       do {
         description = try describePackage(packageDir, paths: paths)
       } catch {
         let reason = "\(error)".split(separator: "\n").dropFirst().first.map(String.init) ?? "\(error)"
         runner.record("test \(relativePath(packageDir)) (cannot describe package: \(reason.trimmingCharacters(in: .whitespaces)))", status: .skip)
-        continue
+        return
       }
       descriptions[packageDir] = description
       if submodule == nil, relativePath(packageDir).isEmpty {
         rootPackage = description
       }
+      let testTargets = description.targets.filter { $0.type == "test" }.map(\.name)
       packages.append(
         LocalPackage(
           directory: packageDir,
           name: description.name,
           hasTests: description.hasTestTargets,
           scheme: LocalPackage.scheme(for: description, in: schemes).flatMap { scheme in
-            rootPackages.contains(ValidationPaths.canonical(packageDir)) || schemeFileHasTests(scheme) ? scheme : nil
+            ValidationDiscovery.isOpenedDirectly(packageDir: packageDir, container: container, repoPath: repoPath)
+              || ValidationDiscovery.schemeTestsPackage(schemeTests(named: scheme), packageDir: packageDir, testTargets: testTargets, workspaceMembers: workspaceMembers) ? scheme : nil
           },
           submodule: submodule,
-          submoduleChanged: submoduleChanged
+          submoduleChanged: submoduleChanged,
+          testTargets: testTargets
         )
       )
     }
 
-    let roots = container.isEmpty ? [repoPath] : ValidationDiscovery.referencedPackages(container: container)
-    let localDependencies = Dictionary(
-      packages.map { package in
-        (ValidationPaths.canonical(package.directory), descriptions[package.directory]?.localDependencyPaths.map(ValidationPaths.canonical) ?? [])
-      },
-      uniquingKeysWith: { first, _ in first }
-    )
-    let product = ValidationDiscovery.productPackages(roots: roots.map(ValidationPaths.canonical), localDependencies: localDependencies)
+    var unexaminedSubmodules: [String: String] = [:]
+    for packageDir in packageDirs {
+      let submodule = SubmoduleStatus.enclosingSubmodule(of: packageDir, repoPath: repoPath)
+      let submoduleChanged = submodule.map(changedSubmodules.contains) ?? false
+      if let submodule, config.testSubmodules == .never || (config.testSubmodules == .changed && !submoduleChanged) {
+        unexamined.append(packageDir)
+        unexaminedSubmodules[packageDir] = submodule
+        continue
+      }
+      examine(packageDir, submodule: submodule, submoduleChanged: submoduleChanged)
+    }
+
+    // Packages in submodules the policy does not test are still examined when the product uses them, so the coverage
+    // check can report tests that no product scheme runs. They are not tested separately.
+    let roots = (container.isEmpty ? [repoPath] : ValidationDiscovery.referencedPackages(container: container)).map(ValidationPaths.canonical)
+    var product: Set<String> = []
+    while true {
+      let localDependencies = Dictionary(
+        packages.map { package in
+          (ValidationPaths.canonical(package.directory), descriptions[package.directory]?.localDependencyPaths.map(ValidationPaths.canonical) ?? [])
+        },
+        uniquingKeysWith: { first, _ in first }
+      )
+      product = ValidationDiscovery.productPackages(roots: roots, localDependencies: localDependencies)
+      let reached = unexamined.filter { product.contains(ValidationPaths.canonical($0)) }
+      guard !reached.isEmpty else { break }
+      unexamined.removeAll { reached.contains($0) }
+      for packageDir in reached {
+        examine(packageDir, submodule: unexaminedSubmodules[packageDir], submoduleChanged: false)
+      }
+    }
     for index in packages.indices {
       packages[index].inProduct = product.contains(ValidationPaths.canonical(packages[index].directory))
     }
 
     let productSchemes = try self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
     let schemesWithTests = Set(productSchemes.filter(schemeFileHasTests))
+    let productTests = Dictionary(uniqueKeysWithValues: schemesWithTests.compactMap { scheme in schemeTests(named: scheme).map { (scheme, $0) } })
+    var testPlans = productTests.compactMapValues(\.testPlan)
+    for scheme in packages.compactMap(\.scheme) where testPlans[scheme] == nil {
+      testPlans[scheme] = schemeTests(named: scheme)?.testPlan
+    }
+    let coverage = TestCoverage.check(
+      packages: packages,
+      tested: ValidationPlan.testedPackages(packages, testSubmodules: config.testSubmodules, excluded: config.excludedPackages),
+      excluded: config.excludedPackages,
+      schemeTests: productTests,
+      workspaceMembers: workspaceMembers,
+      repoPath: repoPath
+    )
+    for index in packages.indices {
+      packages[index].coveredBy = coverage.schemes[ValidationPaths.canonical(packages[index].directory)]
+    }
 
     let buildPlatforms: [ApplePlatform]
     if !config.platforms.isEmpty {
@@ -391,7 +436,7 @@ final class ValidationTool {
     let testDestinations = simulators.mapValues(\.destination).merging([.macOS: "platform=macOS"]) { current, _ in current }
 
     if needsSimulators {
-      for index in packages.indices where packages[index].inProduct && packages[index].hasTests && packages[index].scheme == nil {
+      for index in packages.indices where packages[index].inProduct && packages[index].hasTests && packages[index].scheme == nil && packages[index].coveredBy == nil {
         guard let description = descriptions[packages[index].directory] else { continue }
         let packageSchemes = try listSchemes([], in: packages[index].directory)
         packages[index].packageScheme = LocalPackage.scheme(for: description, in: packageSchemes)
@@ -408,7 +453,9 @@ final class ValidationTool {
       simulatorIDs: simulators.mapValues(\.id),
       simulatorNotes: testPlatforms.compactMap { simulators[$0]?.note },
       packages: packages,
-      unexaminedSubmodulePackages: unexamined
+      unexaminedSubmodulePackages: unexamined,
+      testPlans: testPlans,
+      coverageWarnings: coverage.warnings
     )
   }
 

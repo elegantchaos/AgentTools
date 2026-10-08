@@ -1,5 +1,12 @@
 # Release Notes
 
+## 3.10.0
+
+- Full validation runs a product scheme's test plan named `Full Validation` when it has one, and otherwise its default tests.
+- Full validation checks that the product schemes run the tests of every local package in the product. A package whose test targets they run in full, without selecting or skipping individual tests, and which is a workspace member, gets no test step of its own. Any other package is named in a warning, with the test targets the schemes miss or run only in part, or a note that it is not a workspace member, and is tested separately. Packages the submodule policy leaves untested are not warned about; `--plan` says whether a product scheme runs their tests.
+- Fixes full validation failing with "Scheme … is not currently configured for the test action" for packages that are workspace members. Xcode's generated package schemes have no test action inside a workspace, so such packages are tested in their own directory unless a shared scheme runs all of their tests.
+- A scheme whose test action uses a test plan counts as having tests.
+
 ## 3.9.0
 
 - Adds `agt calendar events` and `agt calendar reminders`, which list upcoming events and incomplete reminders, one short line each, for up to 14 days. Multi-day all-day events include their final occupied date. Reminders overdue by more than seven days are left out. Only times, titles, locations and calendar or list names are read, and text is reduced to one line of at most 80 characters.

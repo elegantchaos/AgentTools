@@ -175,13 +175,17 @@ Only one validation runs at a time, since they share build directories. Any new 
 Full validation builds the product first, then tests it:
 
 1. Every product scheme is built for every platform the product supports, macOS first, to catch compiler errors the fast check missed.
-2. Then, platform by platform, it runs the tests of the product schemes whose test action includes tests, and the tests of the Swift packages that are part of the product.
+2. Then, platform by platform, it runs the tests of the product schemes whose test action includes tests, and the tests of the Swift packages that are part of the product and that those schemes do not already run.
 
 The product is the Xcode workspace in the repository root, or else its Xcode project, or else its root `Package.swift`. The default product scheme is the one named after the repository, or the root package's scheme when there is no workspace or project. For an Xcode product, the platforms are those its schemes support; a Swift package product is built for macOS unless configured otherwise.
 
 A local Swift package is part of the product when the product uses it: the workspace lists it, a project references it as a local package, it is the root package of a Swift package product, or it is a local path dependency of one of those. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so by default their tests run only when the submodule differs from the commit the repository records, for example after editing it in place.
 
-A package's tests run through the product's scheme for it when the workspace or project has one, sharing the product's build. Otherwise they run with SwiftPM on macOS, and on other platforms with `xcodebuild` in the package's own directory, using the scheme Xcode creates for the package; a package with no such scheme is reported as skipped on that platform.
+The fastest arrangement is for the product scheme to run every package's tests itself, so the whole product builds once per platform and Xcode runs all the tests together. When a product scheme has a test plan named `Full Validation`, validation runs that plan (`-testPlan "Full Validation"`), leaving the scheme's default plan free for quicker runs in Xcode; otherwise it runs the scheme's default tests. A test plan or scheme lists a package's tests by its `container:` path, and Xcode runs them only when the package is a member of the workspace, skipping them without any message otherwise.
+
+Validation checks this coverage. A package whose test targets a product scheme runs in full, without selecting or skipping individual tests, and which is a workspace member, needs no test step of its own, and `--plan` says it is tested by that scheme. For any other package of the product with tests, validation prints a warning naming the test targets the schemes miss or run only in part, or saying the package is not a workspace member, and then tests the package separately. Packages that the submodule policy leaves untested are not warned about: list their tests in the plan or scheme to run them on every full validation.
+
+A package tested separately runs through a shared scheme for it in the workspace when that scheme runs all of its tests, and the package is a workspace member. Otherwise it runs with SwiftPM on macOS, and on other platforms with `xcodebuild` in the package's own directory, using the scheme Xcode creates for the package; a package with no such scheme is reported as skipped on that platform. Xcode's generated package schemes have a test action only when the package is opened on its own, never inside a workspace, so they are not used through the workspace.
 
 Tests on iOS, tvOS, watchOS, and visionOS run on a simulator: the platform's test device for its newest installed runtime, named `Test <device> <version>`, such as `Test iPhone 27.2`. The devices are `iPhone` (or `iPad`), `TV`, `Watch`, and `Vision`. When the newest runtime has no test device, validation creates one and reports it, choosing the device the App Store asks screenshots for: the newest iPhone Pro Max, 13-inch iPad Pro, Apple TV 4K at 4K, or Apple Watch Ultra. If that fails, it reports why and uses a test device for an older runtime, or else the first simulator with the newest OS. A platform without an available simulator is reported as skipped.
 
@@ -211,7 +215,7 @@ Projects configure formatting and validation in `.agt/config.json`, committed, w
 - `platforms` (`--platforms`): the platforms to build for: `macOS`, `iOS`, `tvOS`, `watchOS`, `visionOS`.
 - `testPlatforms` (`--test-platforms`): the platforms to test on; defaults to the build platforms. `["macOS"]` avoids simulators.
 - `testSubmodules` (`--test-submodules`): when to test packages in git submodules: `changed` (the default), `always`, or `never`.
-- `excludePackages`: packages whose tests never run, by package name.
+- `excludePackages`: packages whose tests never run separately, by package name. The coverage check does not report them.
 
 See what validation would do without running anything: every local package, with how its tests run or why they do not, then each step with its exact command:
 

@@ -99,12 +99,26 @@ enum ValidationDiscovery {
     }
   }
 
-  /// Returns the directories of the root packages of a container: the packages a workspace lists as members, or the
-  /// package in the repository root when there is no container. Xcode gives a package's schemes a test action only
-  /// when the package is a root; a package that a project references, or that another package depends on, gets
-  /// build-only schemes.
-  static func rootPackages(container: [String], repoPath: String) -> [String] {
-    guard !container.isEmpty else { return [repoPath] }
+  /// Returns whether `packageDir` is the package `xcodebuild` opens directly: the repository's package, when there is
+  /// no workspace or project.
+  ///
+  /// Xcode gives a package's generated schemes a test action only when it opens that package directly. In a
+  /// workspace, even as a member, they are build-only; the package's tests run there only when a shared scheme or test
+  /// plan lists them.
+  static func isOpenedDirectly(packageDir: String, container: [String], repoPath: String) -> Bool {
+    container.isEmpty && ValidationPaths.canonical(packageDir) == ValidationPaths.canonical(repoPath)
+  }
+
+  /// Returns whether a shared scheme with `tests` can test the package in `packageDir` on its own: the package is a
+  /// workspace member, and the scheme runs every test of each of its `testTargets`.
+  static func schemeTestsPackage(_ tests: SchemeTests?, packageDir: String, testTargets: [String], workspaceMembers: Set<String>) -> Bool {
+    guard let tests, Set(workspaceMembers.map(ValidationPaths.canonical)).contains(ValidationPaths.canonical(packageDir)) else { return false }
+    return tests.runsAllTests(testTargets, in: packageDir)
+  }
+
+  /// Returns the directories of the packages a workspace lists as members, which are the only packages whose tests
+  /// Xcode runs when a workspace scheme or test plan lists them. A project, or no container, has none.
+  static func workspaceMemberPackages(container: [String]) -> [String] {
     guard container.count == 2, container[0] == "-workspace",
       let contents = try? String(contentsOfFile: "\(container[1])/contents.xcworkspacedata", encoding: .utf8)
     else { return [] }
