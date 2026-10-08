@@ -3,6 +3,7 @@
 //  Copyright © 2026 Elegant Chaos Limited. All rights reserved.
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+import Darwin
 import Foundation
 import Testing
 
@@ -10,6 +11,54 @@ import Testing
 
 /// Tests the parts of `agt refresh` that find runtimes, plan plugin installs, and check helper copies.
 struct RefreshTests {
+  /// Terminal access and interrupt signals share the refresh process's foreground group.
+  @Test func pluginCommandSharesProcessGroup() throws {
+    try withTemporaryDirectory { root in
+      let tool = RefreshTool(repoRoot: root, locator: RuntimeCommandLocator(environment: [:], homeDirectory: root, rootDirectory: root))
+      try tool.runPassingThrough(
+        URL(fileURLWithPath: "/bin/sh"),
+        ["-c", "group=$(/bin/ps -o pgid= -p $$); [ \"$group\" -eq \"$1\" ] || exit 43", "plugin", String(getpgrp())]
+      )
+    }
+  }
+
+  /// Plugin maintenance receives EOF instead of inheriting terminal input.
+  @Test func pluginCommandHasNoTerminalInput() throws {
+    try withTemporaryDirectory { root in
+      let tool = RefreshTool(repoRoot: root, locator: RuntimeCommandLocator(environment: [:], homeDirectory: root, rootDirectory: root))
+      try tool.runPassingThrough(URL(fileURLWithPath: "/bin/sh"), ["-c", "[ /dev/fd/0 -ef /dev/null ] || exit 42"])
+    }
+  }
+
+  /// Announces the executable and arguments before the child begins work.
+  @Test func announcesPluginCommandBeforeLaunch() throws {
+    try withTemporaryDirectory { root in
+      let marker = root.appendingPathComponent("started")
+      let tool = RefreshTool(repoRoot: root, locator: RuntimeCommandLocator(environment: [:], homeDirectory: root, rootDirectory: root))
+      let arguments = ["-c", "touch started"]
+      var messages: [String] = []
+      try tool.runPassingThrough(URL(fileURLWithPath: "/bin/sh"), arguments) { message in
+        #expect(FileManager.default.fileExists(atPath: marker.path) == false)
+        messages.append(message)
+      }
+      #expect(messages == ["refresh: /bin/sh -c touch started"])
+      #expect(FileManager.default.fileExists(atPath: marker.path))
+    }
+  }
+
+  /// Preserves a failing child command's status and identity in its error.
+  @Test func reportsPluginCommandFailure() throws {
+    try withTemporaryDirectory { root in
+      let tool = RefreshTool(repoRoot: root, locator: RuntimeCommandLocator(environment: [:], homeDirectory: root, rootDirectory: root))
+      do {
+        try tool.runPassingThrough(URL(fileURLWithPath: "/bin/sh"), ["-c", "exit 7"])
+        Issue.record("Expected the failed plugin command to throw.")
+      } catch let error as ToolError {
+        #expect(error.description == "/bin/sh -c exit 7 failed with status 7")
+      }
+    }
+  }
+
   /// Prefers a runtime command on `PATH`.
   @Test func locatesCommandOnPath() throws {
     try withTemporaryDirectory { root in
