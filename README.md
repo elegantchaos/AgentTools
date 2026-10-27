@@ -250,22 +250,24 @@ The two locations are:
   echo "$(getconf DARWIN_USER_CACHE_DIR)clang/ModuleCache"
   ```
 
-To configure them by hand for Claude Code, add both to `sandbox.filesystem.allowWrite` in `~/.claude/settings.json`:
+`agt sandbox configure` also allows writes to the Agents checkout that maintenance commands use, `AGENTS_REPO_ROOT` or `~/.local/share/agents`, so agents working in other projects can update the shared guidance. Validation does not need it.
+
+To configure them by hand for Claude Code, add them to `sandbox.filesystem.allowWrite` in `~/.claude/settings.json`:
 
 ```json
 {
   "sandbox": {
     "filesystem": {
-      "allowWrite": ["~/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache"]
+      "allowWrite": ["~/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "~/.local/share/agents"]
     }
   }
 }
 ```
 
-For Codex, add both to `sandbox_workspace_write.writable_roots` in `~/.codex/config.toml`, using absolute paths:
+For Codex, add them to `sandbox_workspace_write.writable_roots` in `~/.codex/config.toml`, using absolute paths:
 
 ```toml
-sandbox_workspace_write.writable_roots = ["/Users/you/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache"]
+sandbox_workspace_write.writable_roots = ["/Users/you/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "/Users/you/.local/share/agents"]
 ```
 
 `Extras/Scripts/sandbox-check.sh [repository]` runs validation in a sandbox that allows only these locations, the repository, and temporary directories.

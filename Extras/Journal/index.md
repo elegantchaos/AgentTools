@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-10-27](2026-10-27.md) — `agt sandbox configure` also allows writes to the Agents checkout, so agents in other projects can update shared guidance; `.worktrees/` ignored.
+
 - [2026-10-08](2026-10-08.md) — Defaulted maintenance commands to the shared Agents checkout in the user's home directory. Diagnosed terminal job-control stops in refresh plugin commands and fixed their process-group inheritance. Reviewed PR 3; found false coverage for filtered test plans and incomplete shared-scheme fallback routing. Focused tests and full AgentTools validation passed.
 
 - [2026-07-23](2026-07-23.md) — Initial standalone package migration.

@@ -14,3 +14,6 @@ Packages/
 
 # Temp workaround for swift bug which drops generated deps in the source tree
 /Version.generated.*
+
+# Agent worktrees
+.worktrees/

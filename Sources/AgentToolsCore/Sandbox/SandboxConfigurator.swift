@@ -5,11 +5,13 @@
 
 import Foundation
 
-/// Lets Claude Code's and Codex's sandboxes write where Swift validation needs to, outside the project.
+/// Lets Claude Code's and Codex's sandboxes write where agents need to outside their project: the caches Swift
+/// validation uses, and the shared Agents checkout.
 ///
 /// `agt validate` runs inside the agents' sandboxes. Xcode writes package manifests to SwiftPM's cache, and compiles
 /// manifests that import macro support with the per-user clang module cache, so both runtimes must allow writes
-/// there. The paths are machine-specific, so they are computed here and merged into each runtime's user
+/// there. Agents also maintain the shared guidance from sessions in other projects, so the Agents checkout that
+/// maintenance commands use must be writable too. The paths are machine-specific, so they are computed here and merged into each runtime's user
 /// configuration by ``ClaudeSandboxSettings`` and ``CodexSandboxConfig``. Configuring is idempotent, and backs a file
 /// up, with a `.bak` suffix, before changing it.
 struct SandboxConfigurator {
@@ -35,12 +37,23 @@ struct SandboxConfigurator {
     return SandboxConfigurator(
       environment: ProcessInfo.processInfo.environment,
       homeDirectory: homeDirectory,
-      paths: cachePaths(homeDirectory: homeDirectory, userCacheDirectory: try userCacheDirectory())
+      paths: writablePaths(
+        environment: ProcessInfo.processInfo.environment, homeDirectory: homeDirectory,
+        userCacheDirectory: try userCacheDirectory())
     )
   }
 
+  /// Returns every directory the sandboxes must be able to write: the caches and the Agents checkout.
+  ///
+  /// The checkout is the one maintenance commands use, whether or not it exists yet, so configuring before cloning
+  /// still allows it.
+  static func writablePaths(environment: [String: String], homeDirectory: URL, userCacheDirectory: String) -> [String] {
+    cachePaths(homeDirectory: homeDirectory, userCacheDirectory: userCacheDirectory)
+      + [RepoRootLocator.configuredRoot(environment: environment, homeDirectory: homeDirectory).path]
+  }
+
   /// Returns SwiftPM's cache and the per-user clang module cache.
-  static func cachePaths(homeDirectory: URL, userCacheDirectory: String) -> [String] {
+  private static func cachePaths(homeDirectory: URL, userCacheDirectory: String) -> [String] {
     [
       homeDirectory.appendingPathComponent("Library/Caches/org.swift.swiftpm").path,
       URL(fileURLWithPath: userCacheDirectory, isDirectory: true).appendingPathComponent("clang/ModuleCache").path,
