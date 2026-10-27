@@ -10,13 +10,30 @@ import Testing
 
 /// Tests configuring both runtimes' sandboxes on disk.
 struct SandboxConfiguratorTests {
-  /// Computes the SwiftPM cache under the home directory and the clang cache under the user cache directory.
-  @Test func computesCachePaths() {
-    let paths = SandboxConfigurator.cachePaths(
+  /// Allows the SwiftPM cache under the home directory, the clang cache under the user cache directory, and the
+  /// shared Agents checkout.
+  @Test func computesWritablePaths() {
+    let paths = SandboxConfigurator.writablePaths(
+      environment: [:],
       homeDirectory: URL(fileURLWithPath: "/Users/someone"),
       userCacheDirectory: "/var/folders/xy/abc/C/"
     )
-    #expect(paths == ["/Users/someone/Library/Caches/org.swift.swiftpm", "/var/folders/xy/abc/C/clang/ModuleCache"])
+    #expect(
+      paths == [
+        "/Users/someone/Library/Caches/org.swift.swiftpm", "/var/folders/xy/abc/C/clang/ModuleCache",
+        "/Users/someone/.local/share/agents",
+      ])
+  }
+
+  /// Allows the Agents checkout that `AGENTS_REPO_ROOT` names instead of the shared one.
+  @Test func honoursAgentsRepositoryOverride() {
+    let paths = SandboxConfigurator.writablePaths(
+      environment: ["AGENTS_REPO_ROOT": "/checkouts/agents"],
+      homeDirectory: URL(fileURLWithPath: "/Users/someone"),
+      userCacheDirectory: "/var/folders/xy/abc/C/"
+    )
+    #expect(paths.last == "/checkouts/agents")
+    #expect(paths.contains("/Users/someone/.local/share/agents") == false)
   }
 
   /// Finds a user cache directory for the current user.
