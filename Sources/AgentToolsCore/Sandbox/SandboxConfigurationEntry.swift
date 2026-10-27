@@ -19,8 +19,8 @@ struct SandboxConfigurationEntry: Equatable {
   /// A one-line description for terminal output.
   var summary: String {
     switch status {
-      case .updated: "\(runtime.rawValue): added the Swift validation caches to \(file.path)"
-      case .unchanged: "\(runtime.rawValue): \(file.path) already allows the Swift validation caches"
+      case .updated: "\(runtime.rawValue): added missing sandbox writable paths to \(file.path)"
+      case .unchanged: "\(runtime.rawValue): \(file.path) already allows the configured sandbox writable paths"
     }
   }
 }

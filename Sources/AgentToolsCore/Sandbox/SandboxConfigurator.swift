@@ -11,9 +11,9 @@ import Foundation
 /// `agt validate` runs inside the agents' sandboxes. Xcode writes package manifests to SwiftPM's cache, and compiles
 /// manifests that import macro support with the per-user clang module cache, so both runtimes must allow writes
 /// there. Agents also maintain the shared guidance from sessions in other projects, so the Agents checkout that
-/// maintenance commands use must be writable too. The paths are machine-specific, so they are computed here and merged into each runtime's user
-/// configuration by ``ClaudeSandboxSettings`` and ``CodexSandboxConfig``. Configuring is idempotent, and backs a file
-/// up, with a `.bak` suffix, before changing it.
+/// maintenance commands use must be writable too. The paths are machine-specific, so they are computed here and
+/// merged into each runtime's user configuration by ``ClaudeSandboxSettings`` and ``CodexSandboxConfig``.
+/// Configuring is idempotent and backs up a file with a `.bak` suffix before changing it.
 struct SandboxConfigurator {
   /// Claude Code's user settings file.
   let claudeSettings: URL
