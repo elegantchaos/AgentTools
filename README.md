@@ -235,19 +235,25 @@ Run `agt format --help` or `agt validate --help` for all options.
 
 When validation runs inside another sandbox, such as a coding agent's, it detects this and turns off the sandboxes that SwiftPM and Xcode would otherwise start for package manifests, plugins, macros, and build scripts, since those cannot start inside another sandbox.
 
-The agent's sandbox must still allow writes to two locations outside the repository. `agt sandbox configure` adds both to Claude Code's and Codex's user configuration, keeping every other setting, and backs up a file with a `.bak` suffix before changing it:
+The agent's sandbox must still allow writes to three locations outside the repository. `agt sandbox configure` adds them to Claude Code's and Codex's user configuration, keeping every other setting, and backs up a file with a `.bak` suffix before changing it:
 
 ```shell
 agt sandbox configure
 ```
 
-The two locations are:
+The three locations are:
 
 - `~/Library/Caches/org.swift.swiftpm`, which Xcode always uses for package manifests, and which validation shares for package downloads.
 - The per-user clang module cache, which Xcode uses when a package manifest imports macro support. Find its path with:
 
   ```shell
   echo "$(getconf DARWIN_USER_CACHE_DIR)clang/ModuleCache"
+  ```
+
+- The per-user temporary directory. Foundation stages atomic writes there whatever `TMPDIR` says, so Swift Build cannot save its build manifest, and `xcrun` cannot write its cache, without it. Find its path with:
+
+  ```shell
+  getconf DARWIN_USER_TEMP_DIR
   ```
 
 `agt sandbox configure` also allows writes to the Agents checkout that maintenance commands use, `AGENTS_REPO_ROOT` or `~/.local/share/agents`, so agents working in other projects can update the shared guidance. Validation does not need it.
@@ -258,7 +264,7 @@ To configure them by hand for Claude Code, add them to `sandbox.filesystem.allow
 {
   "sandbox": {
     "filesystem": {
-      "allowWrite": ["~/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "~/.local/share/agents"]
+      "allowWrite": ["~/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "/var/folders/.../T", "~/.local/share/agents"]
     }
   }
 }
@@ -267,7 +273,7 @@ To configure them by hand for Claude Code, add them to `sandbox.filesystem.allow
 For Codex, add them to `sandbox_workspace_write.writable_roots` in `~/.codex/config.toml`, using absolute paths:
 
 ```toml
-sandbox_workspace_write.writable_roots = ["/Users/you/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "/Users/you/.local/share/agents"]
+sandbox_workspace_write.writable_roots = ["/Users/you/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "/var/folders/.../T", "/Users/you/.local/share/agents"]
 ```
 
 `Extras/Scripts/sandbox-check.sh [repository]` runs validation in a sandbox that allows only these locations, the repository, and temporary directories.

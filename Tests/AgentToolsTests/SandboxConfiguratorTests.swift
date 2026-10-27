@@ -10,18 +10,19 @@ import Testing
 
 /// Tests configuring both runtimes' sandboxes on disk.
 struct SandboxConfiguratorTests {
-  /// Allows the SwiftPM cache under the home directory, the clang cache under the user cache directory, and the
-  /// shared Agents checkout.
+  /// Allows the SwiftPM cache under the home directory, the clang cache under the user cache directory, the user
+  /// temporary directory, and the shared Agents checkout.
   @Test func computesWritablePaths() {
     let paths = SandboxConfigurator.writablePaths(
       environment: [:],
       homeDirectory: URL(fileURLWithPath: "/Users/someone"),
-      userCacheDirectory: "/var/folders/xy/abc/C/"
+      userCacheDirectory: "/var/folders/xy/abc/C/",
+      userTempDirectory: "/var/folders/xy/abc/T/"
     )
     #expect(
       paths == [
         "/Users/someone/Library/Caches/org.swift.swiftpm", "/var/folders/xy/abc/C/clang/ModuleCache",
-        "/Users/someone/.local/share/agents",
+        "/var/folders/xy/abc/T", "/Users/someone/.local/share/agents",
       ])
   }
 
@@ -30,7 +31,8 @@ struct SandboxConfiguratorTests {
     let paths = SandboxConfigurator.writablePaths(
       environment: ["AGENTS_REPO_ROOT": "/checkouts/agents"],
       homeDirectory: URL(fileURLWithPath: "/Users/someone"),
-      userCacheDirectory: "/var/folders/xy/abc/C/"
+      userCacheDirectory: "/var/folders/xy/abc/C/",
+      userTempDirectory: "/var/folders/xy/abc/T/"
     )
     #expect(paths.last == "/checkouts/agents")
     #expect(paths.contains("/Users/someone/.local/share/agents") == false)
@@ -40,6 +42,14 @@ struct SandboxConfiguratorTests {
   @Test func findsUserCacheDirectory() throws {
     let directory = try SandboxConfigurator.userCacheDirectory()
     #expect(directory.hasPrefix("/"))
+  }
+
+  /// Finds a user temporary directory for the current user, beside its cache directory.
+  @Test func findsUserTempDirectory() throws {
+    let directory = try SandboxConfigurator.userTempDirectory()
+    let cache = try SandboxConfigurator.userCacheDirectory()
+    #expect(directory.hasPrefix("/"))
+    #expect(directory != cache)
   }
 
   /// Uses the runtime home overrides for the configuration files.
