@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-10-29 AgentTools 3.12.0](2026-10-29-release-3.12.0.md) — Release preparation, validated code revision and the authorised merge/publish/Mint sequence; shared guidance rollout remains separate.
+
 - [2026-10-29 PR #8 Review Fixes](2026-10-29-pr8-review-fixes.md) — Lock placement and waiting plans, creator safety/recovery tests, shared settings, ignore checks and cross-plan preparation coverage; decision proposal awaits separate confirmation.
 
 - [2026-10-29 PR #8 Review Assessment](2026-10-29-pr8-review-assessment.md) — Confirms Claude's main findings, refines plan-contention behavior and decision-record scope, and corrects the proposed ignore query.

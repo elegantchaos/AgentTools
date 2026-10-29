@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## 3.12.0
 
 - Adds `agt worktree create <name>` to create a feature worktree under the main checkout, initialise submodules and prepare dependencies. Failed setup retains the worktree and reports how to resume.
 - Adds `agt prepare` and `agt prepare --plan` to resolve dependencies into the same SwiftPM and Xcode directories used by targeted and full validation, without building targets or running tests. Preparation and validation cannot concurrently own a checkout's build directories.
