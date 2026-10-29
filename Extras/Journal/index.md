@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-10-29 Worktree Preparation](2026-10-29-worktree-preparation.md) — Worktree setup and dependency preparation commands, metadata-denial diagnostics, linked-worktree scheme discovery, and Bookish integration evidence.
+
 - [2026-10-27 PR #6 Review](2026-10-27-pr6-review.md) — Ready; optional sandbox status-message correction. Strict lint, targeted and full validation pass; isolated CLI configuration probe passes.
 
 - [2026-10-27](2026-10-27.md) — `agt sandbox configure` also allows writes to the Agents checkout, so agents in other projects can update shared guidance, and to the per-user temporary directory, where Foundation stages the atomic writes Swift Build needs; `.worktrees/` ignored.

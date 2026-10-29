@@ -15,6 +15,6 @@ Read and follow @~/.local/share/agents/COMMON.md before starting work.
 - Use the `swift:language` skill for Swift language, package, and API design guidance.
 - Use the `swift:testing` skill for Swift Testing work in `Tests/`.
 - Use the `swift:validation` skill for post-change validation.
-- Use the `codex-git` skill for git, GitHub, and release operations.
+- Use the `baseline:git` skill for git, GitHub, and release operations.
 
 To refresh this file, use the `baseline:refresh` skill.

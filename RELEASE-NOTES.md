@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased
+
+- Adds `agt worktree create <name>` to create a feature worktree under the main checkout, initialise submodules and prepare dependencies. Failed setup retains the worktree and reports how to resume.
+- Adds `agt prepare` and `agt prepare --plan` to resolve dependencies into the same SwiftPM and Xcode directories used by targeted and full validation, without building targets or running tests. Preparation and validation cannot concurrently own a checkout's build directories.
+- Reports dependency Git config/hooks permission denials with instructions to run an approved preparation step outside the sandbox, then retry validation inside it. Xcode scheme discovery now uses validation's dependency checkout directory.
+- Uses the main repository's name for the default Xcode scheme in linked worktrees, so a semantic worktree directory name does not change the expected scheme.
+
 ## 3.10.1
 
 - Fixes `agt refresh` hanging in a normal terminal after sandbox configuration. Plugin commands share `agt`'s process group, so terminal cleanup completes and Ctrl-C reaches the children, and receive `/dev/null` as input.

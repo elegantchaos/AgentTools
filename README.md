@@ -117,6 +117,27 @@ This filters out calendars you do not want reported, such as subscriptions. It i
 
 ### Format and Validate
 
+Before starting work in a new checkout, prepare the dependencies that validation will use:
+
+```shell
+agt worktree create dependency-preparation
+```
+
+This creates `.worktrees/dependency-preparation` under the main checkout, on the new branch `feature/dependency-preparation`, initialises submodules recursively and runs dependency preparation. The base defaults to the invoking checkout's HEAD; use `--base <revision>` to choose another revision. Names contain lowercase letters, digits and single hyphens between words, up to 64 characters. Existing branches and destinations are rejected. Uncommitted changes and ignored machine-local configuration are not copied. The command prints an absolute destination; use it for subsequent work. If setup fails after creation, the worktree is retained with a resume instruction.
+
+For an existing checkout, including after changing dependencies or removing validation's checkouts:
+
+```shell
+agt prepare
+agt prepare --plan
+```
+
+Preparation uses the project's validation configuration and shared package/container selection options (`--workspace`, `--project`, `--schemes`, `--package-dirs`, `--no-recursive-packages`). It resolves discovered packages for targeted SwiftPM validation even when the product scheme already covers their tests, plus the Xcode schemes and independent package containers full validation uses. Unchanged submodule examples that discovery leaves unexamined are not prepared. It uses validation's existing scratch and DerivedData paths, evaluates manifests, and may update `Package.resolved`. It does not build targets, run tests or boot simulators. Plan mode performs discovery, which may itself resolve Xcode dependencies, but does not execute the listed resolution steps. Preparation and validation acquire the same checkout lock; preparation stops a running background validation before resolving and fails promptly if another foreground operation owns the directories.
+
+Some agent sandboxes protect dependency `.git/config` and `.git/hooks` even inside writable directories. In those environments, run `agt worktree create` or `agt prepare` once outside the sandbox with explicit user approval, or ask the user to run it. Both commands remain inside their caller's sandbox and never escalate themselves. Claude and Codex restrictions differ; a sandbox that permits dependency checkout creation can prepare inside it. Git's shared repository cache and empty templates do not eliminate local checkout metadata writes. Preparation is not validation evidence. Repeat it after dependency graph changes, switching to revisions needing different dependencies, removing checkout directories or `agt validate --clean`.
+
+Worktree creation handles Git setup; runtime integration is separate. A desktop agent should attach the resulting existing checkout when its runtime supports that, otherwise use the reported absolute path explicitly.
+
 `agt format` and `agt validate` are the standard way to check a Swift repository after a change. They run after every change, so speed comes first: they must add as little friction as possible. Within that constraint, they have two goals.
 
 **Consistent process.** Routine housekeeping, such as formatting and linting, happens the same way every time, so no change skips it and every project follows the same steps.

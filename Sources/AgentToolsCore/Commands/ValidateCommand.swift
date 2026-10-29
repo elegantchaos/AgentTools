@@ -57,17 +57,8 @@ struct ValidateCommand: AsyncParsableCommand {
   @Flag(name: [.customShort("c"), .long], help: "Remove validation's build products and logs in .build/agt before running checks.")
   var clean = false
 
-  /// Explicit workspace path.
-  @Option(help: "Explicit workspace path (absolute or repo-relative).")
-  var workspace: String?
-
-  /// Explicit project path.
-  @Option(help: "Explicit project path (absolute or repo-relative).")
-  var project: String?
-
-  /// Comma-separated Xcode schemes.
-  @Option(help: ArgumentHelp("Schemes that build the product (default: the repo name, or the root package's scheme).", valueName: "csv"))
-  var schemes: String?
+  /// Package and container selection shared with preparation.
+  @OptionGroup var selection: RepositorySelectionOptions
 
   /// Comma-separated build platforms.
   @Option(help: ArgumentHelp("Platforms to build for: macOS, iOS, tvOS, watchOS, visionOS (default: those the product supports).", valueName: "csv"))
@@ -80,18 +71,6 @@ struct ValidateCommand: AsyncParsableCommand {
   /// When to test packages in git submodules.
   @Option(help: "When to test packages in git submodules (default: changed).")
   var testSubmodules: TestSubmodules?
-
-  /// Comma-separated Swift package directories.
-  @Option(help: ArgumentHelp("Package directories for SwiftPM checks (absolute or repo-relative).", valueName: "csv"))
-  var packageDirs: String?
-
-  /// Whether to disable recursive package discovery.
-  @Flag(help: "Disable recursive Package.swift discovery.")
-  var noRecursivePackages = false
-
-  /// Whether to disable SwiftPM's sandbox.
-  @Flag(help: "Disable SwiftPM's internal sandbox. Validation does this automatically when it runs inside another sandbox.")
-  var swiftpmDisableSandbox = false
 
   /// Whether to list the steps instead of running them.
   @Flag(help: "List the steps validation would run, with their commands, without running them.")
@@ -109,10 +88,10 @@ struct ValidateCommand: AsyncParsableCommand {
 
   /// Resolves the parsed options, over the project's configuration file settings, into validation settings.
   func config(repoPath: String, file: ValidateFileSettings = ValidateFileSettings()) throws -> ValidationConfig {
-    let schemes = Self.parseCSV(schemes)
+    let schemes = Self.parseCSV(selection.schemes)
     let platforms = self.platforms.map(Self.parseCSV) ?? file.platforms ?? []
     let testPlatforms = self.testPlatforms.map(Self.parseCSV) ?? file.testPlatforms ?? []
-    let packageDirs = Self.parseCSV(packageDirs)
+    let packageDirs = Self.parseCSV(selection.packageDirs)
 
     return ValidationConfig(
       clean: clean,
@@ -122,16 +101,16 @@ struct ValidateCommand: AsyncParsableCommand {
       wait: wait,
       backgroundWorker: backgroundWorker,
       target: target,
-      workspaceOverride: workspace,
-      projectOverride: project,
+      workspaceOverride: selection.workspace,
+      projectOverride: selection.project,
       schemes: schemes.isEmpty ? file.schemes ?? [] : schemes,
       platforms: try Self.parsePlatforms(platforms),
       testPlatforms: try Self.parsePlatforms(testPlatforms),
       testSubmodules: try testSubmodules ?? Self.parseTestSubmodules(file.testSubmodules),
       excludedPackages: file.excludePackages ?? [],
       packageDirsOverride: packageDirs.isEmpty ? nil : packageDirs,
-      recursivePackageDiscovery: !noRecursivePackages,
-      swiftPMDisableSandbox: swiftpmDisableSandbox,
+      recursivePackageDiscovery: !selection.noRecursivePackages,
+      swiftPMDisableSandbox: selection.swiftpmDisableSandbox,
       outputMode: output.mode,
       planOnly: plan
     )

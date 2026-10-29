@@ -74,6 +74,38 @@ final class ValidationTool {
     }
   }
 
+  /// Resolves dependencies for targeted and full validation without building targets or starting simulators.
+  func prepare() throws {
+    setvbuf(stdout, nil, _IOLBF, 0)
+    guard FileManager.default.fileExists(atPath: "\(repoPath)/.git") else {
+      throw ToolError("Current working directory is not a git repo root: \(repoPath)")
+    }
+    if !config.planOnly, BackgroundLauncher.supersede(store: backgroundStore) {
+      print("Stopped background validation before preparing its dependency directories.")
+    }
+    let lock = try RepositoryOperationLock(repoPath: repoPath)
+    defer { withExtendedLifetime(lock) {} }
+    defer { runner.printSummary() }
+    let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: false)
+    sandbox = try EnclosingSandbox.detect(using: process)
+    print("Preparing dependencies; no target builds or tests. Git metadata protection may require running `agt prepare` outside the sandbox with user approval.")
+    let packages = ValidationDiscovery.packageDirectories(repoPath: repoPath, overrides: config.packageDirsOverride, recursive: config.recursivePackageDiscovery)
+    let workspace = ValidationDiscovery.workspace(override: config.workspaceOverride, repoPath: repoPath)
+    let project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
+    let container = workspace.map { ["-workspace", $0] } ?? project.map { ["-project", $0] } ?? []
+    guard !packages.isEmpty || !container.isEmpty else {
+      print("No Swift packages or Xcode containers to prepare.")
+      return
+    }
+    let discovered = try discoverProject(container: container, packageDirs: packages, paths: paths, preparing: true)
+    for step in PreparationPlan.steps(for: discovered, config: config, paths: paths, sandbox: sandbox) {
+      try runStep(step, paths: paths)
+    }
+    if !config.planOnly {
+      print("Dependency preparation completed. Validation has not run.")
+    }
+  }
+
   /// Starts full validation in the background, unless the last one passed for the current working tree.
   private func startBackground() throws {
     let fingerprint = try WorkingTreeFingerprint.current(using: process)
@@ -197,6 +229,8 @@ final class ValidationTool {
 
   /// Runs the fast phase or full validation in this process, printing the summary whether or not it succeeds.
   private func validate() throws {
+    let lock = try RepositoryOperationLock(repoPath: repoPath)
+    defer { withExtendedLifetime(lock) {} }
     defer { runner.printSummary() }
 
     let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: config.clean)
@@ -306,7 +340,7 @@ final class ValidationTool {
   }
 
   /// Discovers the product schemes, their platforms and tests, and the local packages of the root container.
-  private func discoverProject(container: [String], packageDirs: [String], paths: ValidationPaths) throws -> ValidationProject {
+  private func discoverProject(container: [String], packageDirs: [String], paths: ValidationPaths, preparing: Bool = false) throws -> ValidationProject {
     guard !container.isEmpty || FileManager.default.fileExists(atPath: "\(repoPath)/Package.swift") else {
       throw ToolError("No Xcode workspace or project, and no Package.swift, in \(repoPath).")
     }
@@ -332,11 +366,12 @@ final class ValidationTool {
     var rootPackage: SwiftPackageDescription?
     /// Describes the package in `packageDir` and adds it to `packages`, recording a skipped step when it cannot be
     /// described.
-    func examine(_ packageDir: String, submodule: String?, submoduleChanged: Bool) {
+    func examine(_ packageDir: String, submodule: String?, submoduleChanged: Bool) throws {
       let description: SwiftPackageDescription
       do {
         description = try describePackage(packageDir, paths: paths)
       } catch {
+        if preparing || error is DependencyPermissionError { throw error }
         let reason = "\(error)".split(separator: "\n").dropFirst().first.map(String.init) ?? "\(error)"
         runner.record("test \(relativePath(packageDir)) (cannot describe package: \(reason.trimmingCharacters(in: .whitespaces)))", status: .skip)
         return
@@ -371,7 +406,7 @@ final class ValidationTool {
         unexaminedSubmodules[packageDir] = submodule
         continue
       }
-      examine(packageDir, submodule: submodule, submoduleChanged: submoduleChanged)
+      try examine(packageDir, submodule: submodule, submoduleChanged: submoduleChanged)
     }
 
     // Packages in submodules the policy does not test are still examined when the product uses them, so the coverage
@@ -390,7 +425,7 @@ final class ValidationTool {
       guard !reached.isEmpty else { break }
       unexamined.removeAll { reached.contains($0) }
       for packageDir in reached {
-        examine(packageDir, submodule: unexaminedSubmodules[packageDir], submoduleChanged: false)
+        try examine(packageDir, submodule: unexaminedSubmodules[packageDir], submoduleChanged: false)
       }
     }
     for index in packages.indices {
@@ -432,7 +467,7 @@ final class ValidationTool {
     }
     let testPlatforms = config.testPlatforms.isEmpty ? buildPlatforms : config.testPlatforms
     let needsSimulators = testPlatforms.contains { $0 != .macOS }
-    let simulators = try needsSimulators ? self.simulators(container: container, scheme: productSchemes[0], platforms: testPlatforms, paths: paths) : [:]
+    let simulators = try needsSimulators && !preparing ? self.simulators(container: container, scheme: productSchemes[0], platforms: testPlatforms, paths: paths) : [:]
     let testDestinations = simulators.mapValues(\.destination).merging([.macOS: "platform=macOS"]) { current, _ in current }
 
     if needsSimulators {
@@ -513,8 +548,13 @@ final class ValidationTool {
     var packages: [(directory: String, description: SwiftPackageDescription)] = []
     if let target = config.target {
       for packageDir in packageDirs {
-        if let description = try? describePackage(packageDir, paths: paths) {
+        do {
+          let description = try describePackage(packageDir, paths: paths)
           packages.append((packageDir, description))
+        } catch let error as DependencyPermissionError {
+          throw error
+        } catch {
+          // An unrelated package that cannot be described does not prevent locating the requested target.
         }
       }
       scope = FastScope(targets: [target], packages: packages)
@@ -614,7 +654,9 @@ final class ValidationTool {
     let location = directory ?? repoPath
     return try discovered("schemes \(location) \(container.joined(separator: " "))") {
       let process = directory.map { ValidationProcess(workingDirectory: $0) } ?? self.process
-      let result = try process.capture(["xcodebuild", "-list", "-json"] + container + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults)
+      let paths = ValidationPaths(repoPath: repoPath)
+      let derivedData = directory.map { paths.packageDerivedDataPath(forPackage: $0) } ?? paths.derivedDataPath
+      let result = try process.capture(["xcodebuild", "-list", "-json"] + container + ["-clonedSourcePackagesDirPath", "\(derivedData)/SourcePackages"] + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults)
       guard result.status == 0 else {
         let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
         throw ToolError("xcodebuild cannot read \(container.last ?? location):\n\(details)")
@@ -628,7 +670,8 @@ final class ValidationTool {
     try discovered("platforms \(container.joined(separator: " ")) \(scheme)") {
       let result = try process.capture(XcodeDestinations.showBuildSettingsArguments(container: container, scheme: scheme, paths: paths, sandbox: sandbox))
       guard result.status == 0 else {
-        throw ToolError("Failed to read supported platforms for scheme '\(scheme)':\n\(result.stderr)")
+        let details = ValidationOutput.failureDiagnostics(result.stdout + "\n" + result.stderr).joined(separator: "\n")
+        throw ToolError("Failed to read supported platforms for scheme '\(scheme)':\n\(details)")
       }
       let platforms = try XcodeDestinations.platforms(fromBuildSettingsJSON: result.stdout)
       guard !platforms.isEmpty else {
@@ -698,7 +741,12 @@ final class ValidationTool {
     try discovered("describe \(packageDir)") {
       let result = try process.capture(swiftPMCommand(["package"], packageDir: packageDir, paths: paths) + ["describe", "--type", "json"])
       guard result.status == 0 else {
-        throw ToolError("Failed to describe Swift package at \(packageDir):\n\(result.stderr)")
+        let output = result.stdout + "\n" + result.stderr
+        let details = ValidationOutput.failureDiagnostics(output).joined(separator: "\n")
+        if !ValidationOutput.dependencyPreparationAdvice(output).isEmpty {
+          throw DependencyPermissionError(description: "Failed to describe Swift package at \(packageDir):\n\(details)")
+        }
+        throw ToolError("Failed to describe Swift package at \(packageDir):\n\(details)")
       }
       return try JSONDecoder().decode(SwiftPackageDescription.self, from: Data(result.stdout.utf8))
     }
