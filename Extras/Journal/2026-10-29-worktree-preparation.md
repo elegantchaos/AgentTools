@@ -24,3 +24,7 @@ The existing validation and tool-ownership decisions apply; no decision records 
 ## Delivery Boundary
 
 The companion Agents change updates COMMON.md, baseline Git setup, Swift validation preflight/failure handling, plugin versions and the shared roadmap. Publish the AgentTools release before adopting that guidance in installed plugins. No release, merge, runtime-plugin refresh, full Bookish product validation, simulator execution or interactive app checks are included in this implementation task.
+
+## Runtime-Policy Qualification
+
+The companion Agents #38 review corrected the earlier sandbox attribution in this entry: commands succeeded under the session's active policy, but per-invocation sandbox enforcement was not independently verified. Codex allow rules can preauthorise outside-sandbox execution even with auto-review enabled. Keep these preparation and test results as functional evidence; verified runtime-sandbox acceptance remains outstanding. AgentTools must be released before Agents #38 merges because COMMON.md is read directly. Sam separately approved Decision 0010 and the removal of the blanket agt allow rule at its canonical source.
