@@ -57,17 +57,8 @@ struct ValidateCommand: AsyncParsableCommand {
   @Flag(name: [.customShort("c"), .long], help: "Remove validation's build products and logs in .build/agt before running checks.")
   var clean = false
 
-  /// Explicit workspace path.
-  @Option(help: "Explicit workspace path (absolute or repo-relative).")
-  var workspace: String?
-
-  /// Explicit project path.
-  @Option(help: "Explicit project path (absolute or repo-relative).")
-  var project: String?
-
-  /// Comma-separated Xcode schemes.
-  @Option(help: ArgumentHelp("Schemes that build the product (default: the repo name, or the root package's scheme).", valueName: "csv"))
-  var schemes: String?
+  /// Package and container selection shared with preparation.
+  @OptionGroup var selection: RepositorySelectionOptions
 
   /// Comma-separated build platforms.
   @Option(help: ArgumentHelp("Platforms to build for: macOS, iOS, tvOS, watchOS, visionOS (default: those the product supports).", valueName: "csv"))
@@ -81,20 +72,8 @@ struct ValidateCommand: AsyncParsableCommand {
   @Option(help: "When to test packages in git submodules (default: changed).")
   var testSubmodules: TestSubmodules?
 
-  /// Comma-separated Swift package directories.
-  @Option(help: ArgumentHelp("Package directories for SwiftPM checks (absolute or repo-relative).", valueName: "csv"))
-  var packageDirs: String?
-
-  /// Whether to disable recursive package discovery.
-  @Flag(help: "Disable recursive Package.swift discovery.")
-  var noRecursivePackages = false
-
-  /// Whether to disable SwiftPM's sandbox.
-  @Flag(help: "Disable SwiftPM's internal sandbox. Validation does this automatically when it runs inside another sandbox.")
-  var swiftpmDisableSandbox = false
-
   /// Whether to list the steps instead of running them.
-  @Flag(help: "List the steps validation would run, with their commands, without running them.")
+  @Flag(help: "List the steps validation would run, with their commands, without running them. Waits for an active preparation or validation to finish.")
   var plan = false
 
   /// Terminal output options.
@@ -109,58 +88,17 @@ struct ValidateCommand: AsyncParsableCommand {
 
   /// Resolves the parsed options, over the project's configuration file settings, into validation settings.
   func config(repoPath: String, file: ValidateFileSettings = ValidateFileSettings()) throws -> ValidationConfig {
-    let schemes = Self.parseCSV(schemes)
-    let platforms = self.platforms.map(Self.parseCSV) ?? file.platforms ?? []
-    let testPlatforms = self.testPlatforms.map(Self.parseCSV) ?? file.testPlatforms ?? []
-    let packageDirs = Self.parseCSV(packageDirs)
-
-    return ValidationConfig(
-      clean: clean,
-      fast: fast,
-      background: background,
-      status: status,
-      wait: wait,
-      backgroundWorker: backgroundWorker,
-      target: target,
-      workspaceOverride: workspace,
-      projectOverride: project,
-      schemes: schemes.isEmpty ? file.schemes ?? [] : schemes,
-      platforms: try Self.parsePlatforms(platforms),
-      testPlatforms: try Self.parsePlatforms(testPlatforms),
-      testSubmodules: try testSubmodules ?? Self.parseTestSubmodules(file.testSubmodules),
-      excludedPackages: file.excludePackages ?? [],
-      packageDirsOverride: packageDirs.isEmpty ? nil : packageDirs,
-      recursivePackageDiscovery: !noRecursivePackages,
-      swiftPMDisableSandbox: swiftpmDisableSandbox,
-      outputMode: output.mode,
-      planOnly: plan
+    var resolved = try selection.configuration(
+      file: file, outputMode: output.mode, planOnly: plan,
+      platforms: platforms, testPlatforms: testPlatforms, testSubmodules: testSubmodules
     )
-  }
-
-  /// Converts platform names, failing on an unknown name.
-  private static func parsePlatforms(_ names: [String]) throws -> [ApplePlatform] {
-    try names.map { name in
-      guard let platform = ApplePlatform(name: name) else {
-        throw ToolError("Unknown platform '\(name)'. Use \(ApplePlatform.allCases.map(\.rawValue).joined(separator: ", ")).")
-      }
-      return platform
-    }
-  }
-
-  /// Converts a configured submodule test policy, failing on an unknown value.
-  private static func parseTestSubmodules(_ value: String?) throws -> TestSubmodules {
-    guard let value else { return .changed }
-    guard let policy = TestSubmodules(rawValue: value) else {
-      throw ToolError("Unknown testSubmodules value '\(value)'. Use \(TestSubmodules.allCases.map(\.rawValue).joined(separator: ", ")).")
-    }
-    return policy
-  }
-
-  /// Splits a comma-separated option into trimmed non-empty items.
-  private static func parseCSV(_ value: String?) -> [String] {
-    (value ?? "")
-      .split(separator: ",")
-      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-      .filter { !$0.isEmpty }
+    resolved.clean = clean
+    resolved.fast = fast
+    resolved.background = background
+    resolved.status = status
+    resolved.wait = wait
+    resolved.backgroundWorker = backgroundWorker
+    resolved.target = target
+    return resolved
   }
 }

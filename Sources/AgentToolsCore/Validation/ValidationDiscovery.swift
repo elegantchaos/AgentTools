@@ -16,9 +16,20 @@ enum ValidationDiscovery {
     return URL(fileURLWithPath: repoPath).appendingPathComponent(expanded).standardizedFileURL.path
   }
 
-  /// Returns the repository directory name, used as the default scheme and container name.
+  /// Returns the main repository's directory name, used as the default scheme and container name.
+  /// Linked worktrees follow Git's gitdir and commondir files so a semantic worktree name cannot change the scheme.
   static func repoName(_ repoPath: String) -> String {
-    URL(fileURLWithPath: repoPath).lastPathComponent
+    let repo = URL(fileURLWithPath: repoPath, isDirectory: true)
+    if let pointer = try? String(contentsOf: repo.appendingPathComponent(".git"), encoding: .utf8), pointer.hasPrefix("gitdir: ") {
+      let gitDir = URL(fileURLWithPath: String(pointer.dropFirst("gitdir: ".count)).trimmingCharacters(in: .whitespacesAndNewlines), isDirectory: true, relativeTo: repo)
+      if let common = try? String(contentsOf: gitDir.appendingPathComponent("commondir"), encoding: .utf8) {
+        let directory = URL(fileURLWithPath: common.trimmingCharacters(in: .whitespacesAndNewlines), isDirectory: true, relativeTo: gitDir).standardizedFileURL
+        if directory.lastPathComponent == ".git" {
+          return directory.deletingLastPathComponent().lastPathComponent
+        }
+      }
+    }
+    return repo.lastPathComponent
   }
 
   /// Returns the explicit workspace when valid, or the repository's workspace, preferring one named after the repository.

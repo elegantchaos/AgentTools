@@ -62,10 +62,11 @@ enum ValidationOutput {
 
   /// Extracts the first error block, with its leading notes and warnings, from failed step output.
   static func failureDiagnostics(_ output: String) -> [String] {
+    let preparationAdvice = dependencyPreparationAdvice(output)
     let lines = output.split(whereSeparator: \.isNewline).map(String.init)
 
     guard let firstErrorIndex = lines.firstIndex(where: { $0.localizedCaseInsensitiveContains("error:") }) else {
-      return Array(lines.compactMap(filteredLine).prefix(maximumFailureLines))
+      return Array(lines.compactMap(filteredLine).prefix(maximumFailureLines)) + preparationAdvice
     }
 
     var start = firstErrorIndex
@@ -84,7 +85,23 @@ enum ValidationOutput {
       }
     }
 
-    return Array(collected.prefix(maximumFailureLines))
+    return Array(collected.prefix(maximumFailureLines)) + preparationAdvice
+  }
+
+  /// Recognises permission denials on dependency Git metadata without misclassifying ordinary source failures.
+  static func dependencyPreparationAdvice(_ output: String) -> [String] {
+    let lower = output.lowercased()
+    guard lower.contains("clone") || lower.contains("working copy") || lower.contains("checkouts/") || lower.contains("sourcepackages/") else { return [] }
+    let denied = output.split(whereSeparator: \.isNewline).first { line in
+      let text = line.lowercased()
+      return (text.contains("operation not permitted") || text.contains("permission denied"))
+        && text.range(of: #"\.git/(?:config(?:\.lock)?(?:['":\s]|$)|hooks(?:/|['":\s]|$))"#, options: .regularExpression) != nil
+    }
+    guard let denied else { return [] }
+    return [
+      "Dependency Git metadata write was denied: \(denied.trimmingCharacters(in: .whitespaces))",
+      "Run `agt prepare` from this checkout outside the sandbox with explicit user approval, or ask the user to run it, then retry validation. Preparation does not run builds or tests. The command never escalates itself.",
+    ]
   }
 
   /// Returns `true` for compiler error, warning, or note lines.

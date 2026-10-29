@@ -1,5 +1,13 @@
 # Development Journal
 
+- [2026-10-29 AgentTools 3.12.0](2026-10-29-release-3.12.0.md) — Release preparation, validated code revision and the authorised merge/publish/Mint sequence; shared guidance rollout remains separate.
+
+- [2026-10-29 PR #8 Review Fixes](2026-10-29-pr8-review-fixes.md) — Lock placement and waiting plans, creator safety/recovery tests, shared settings, ignore checks and cross-plan preparation coverage; decision proposal awaits separate confirmation.
+
+- [2026-10-29 PR #8 Review Assessment](2026-10-29-pr8-review-assessment.md) — Confirms Claude's main findings, refines plan-contention behavior and decision-record scope, and corrects the proposed ignore query.
+
+- [2026-10-29 Worktree Preparation](2026-10-29-worktree-preparation.md) — Worktree setup and dependency preparation commands, metadata-denial diagnostics, linked-worktree scheme discovery, and Bookish integration evidence.
+
 - [2026-10-27 PR #6 Review](2026-10-27-pr6-review.md) — Ready; optional sandbox status-message correction. Strict lint, targeted and full validation pass; isolated CLI configuration probe passes.
 
 - [2026-10-27](2026-10-27.md) — `agt sandbox configure` also allows writes to the Agents checkout, so agents in other projects can update shared guidance, and to the per-user temporary directory, where Foundation stages the atomic writes Swift Build needs; `.worktrees/` ignored.

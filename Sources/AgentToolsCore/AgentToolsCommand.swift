@@ -18,11 +18,13 @@ public struct AgentToolsCommand: AsyncParsableCommand {
     subcommands: [
       CalendarCommand.self,
       FormatCommand.self,
+      PrepareCommand.self,
       RefreshCommand.self,
       Rules.self,
       Sandbox.self,
       Skills.self,
       ValidateCommand.self,
+      WorktreeCommand.self,
     ]
   )
 

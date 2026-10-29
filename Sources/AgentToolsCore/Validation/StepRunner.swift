@@ -63,6 +63,10 @@ final class StepRunner {
         for line in ValidationOutput.failureDiagnostics(result.output) {
           print(line)
         }
+      } else {
+        for line in ValidationOutput.dependencyPreparationAdvice(result.output) {
+          print(line)
+        }
       }
       print("log: \(logPath)")
       record(summary, status: .fail, warningsPresent: result.warningsPresent, logPath: logPath)
