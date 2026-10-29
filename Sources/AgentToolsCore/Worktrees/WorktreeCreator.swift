@@ -14,15 +14,22 @@ struct WorktreeCreator {
   /// Output mode for Git setup steps.
   var outputMode: ValidateOutputMode = .filtered
 
+  /// Reports setup notes without requiring a particular terminal or runtime.
+  var report: (String) -> Void = { print($0) }
+
   /// Creates the worktree and returns its absolute path after preparation succeeds.
   func create(name: String, base: String, prepare: (String) async throws -> Void) async throws -> String {
     let process = ValidationProcess(workingDirectory: repoPath)
     guard try git(["rev-parse", "--is-bare-repository"], using: process) == "false" else {
       throw ToolError("Worktree creation requires a non-bare Git checkout.")
     }
-    let worktrees = try git(["worktree", "list", "--porcelain"], using: process)
-    guard let main = worktrees.split(separator: "\n").first, main.hasPrefix("worktree ") else {
+    let worktrees = try git(["worktree", "list", "--porcelain", "-z"], using: process)
+    let entries = worktrees.split(separator: "\0", omittingEmptySubsequences: false)
+    guard let main = entries.first, main.hasPrefix("worktree ") else {
       throw ToolError("Cannot locate the main Git checkout.")
+    }
+    guard !entries.dropFirst().prefix(while: { !$0.isEmpty }).contains("bare") else {
+      throw ToolError("Worktree creation does not support a bare main repository, including invocation from its linked checkouts.")
     }
     let mainCheckout = String(main.dropFirst("worktree ".count))
     let location = try WorktreeLocation(name: name, mainCheckout: mainCheckout)
@@ -39,13 +46,19 @@ struct WorktreeCreator {
       throw ToolError(branch.status == 0 ? "Branch already exists: \(location.branch)" : "Cannot check branch availability: \(branch.stderr)")
     }
     let revision = try git(["rev-parse", "--verify", "--end-of-options", "\(base)^{commit}"], using: process)
+    let ignored = try process.capture(["git", "-C", mainCheckout, "check-ignore", "--quiet", "--", ".worktrees/"])
+    if ignored.status == 1 {
+      report("Warning: .worktrees/ is not ignored in \(mainCheckout); the new checkout will appear as untracked there. Add an ignore rule if appropriate.")
+    } else if ignored.status != 0 {
+      throw ToolError("Cannot check whether .worktrees/ is ignored: \(ignored.stderr)")
+    }
     let runner = StepRunner(repoPath: repoPath, outputMode: outputMode)
     let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: false)
     try runner.run(
       title: "Create \(location.branch)", summary: "create worktree \(location.path)",
       arguments: ["git", "worktree", "add", "-b", location.branch, location.path, revision], logPath: paths.logPath("worktree_create_\(name)")
     )
-    print("Worktree: \(location.path)")
+    report("Worktree: \(location.path)")
     do {
       try runner.run(
         title: "Initialise submodules", summary: "initialise worktree submodules",
@@ -60,7 +73,7 @@ struct WorktreeCreator {
     } catch {
       throw ToolError("Worktree retained at \(location.path).\nResume there with `agt prepare`.\n\(error)")
     }
-    print("Ready: \(location.path) (\(location.branch)). Preparation completed; validation has not run.")
+    report("Ready: \(location.path) (\(location.branch)). Preparation completed; validation has not run.")
     return location.path
   }
 

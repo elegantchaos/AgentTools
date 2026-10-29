@@ -20,16 +20,18 @@ struct ValidationPaths {
   var derivedDataPath: String { "\(root)/DerivedData" }
   /// State and output of background validation.
   var backgroundDirectory: String { "\(root)/background" }
+  /// Advisory lock and diagnostic metadata, preserved through cleaning.
+  var lockPath: String { "\(root)/lock" }
 
   /// Resolves the locations for a repository, optionally clearing previous output, and creates them.
   ///
-  /// Clearing keeps the background validation's state and output, which a running background validation owns.
+  /// Clearing keeps background validation's state/output and the operation lock's existing inode.
   static func prepare(repoPath: String, clean: Bool) throws -> ValidationPaths {
     let paths = ValidationPaths(repoPath: repoPath)
     let fileManager = FileManager.default
     if clean {
-      let kept = URL(fileURLWithPath: paths.backgroundDirectory).lastPathComponent
-      for item in (try? fileManager.contentsOfDirectory(atPath: paths.root)) ?? [] where item != kept {
+      let kept = Set([paths.backgroundDirectory, paths.lockPath].map { URL(fileURLWithPath: $0).lastPathComponent })
+      for item in (try? fileManager.contentsOfDirectory(atPath: paths.root)) ?? [] where !kept.contains(item) {
         try? fileManager.removeItem(atPath: "\(paths.root)/\(item)")
       }
     }

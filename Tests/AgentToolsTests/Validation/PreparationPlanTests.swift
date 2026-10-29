@@ -46,6 +46,39 @@ struct PreparationPlanTests {
     #expect(steps[0].arguments.last == "resolve")
   }
 
+  /// Every Xcode execution context in full validation must have a matching resolution step.
+  @Test(arguments: [true, false], [true, false])
+  func preparationCoversEveryValidationContext(hasContainer: Bool, simulatorTests: Bool) throws {
+    let shared = LocalPackage(directory: "/repo/Dependencies/Core", name: "Core", hasTests: true, scheme: "CoreTests", submodule: nil, submoduleChanged: false)
+    var standalone = LocalPackage(directory: "/repo/Standalone", name: "Standalone", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false)
+    standalone.packageScheme = "Standalone-Package"
+    var covered = LocalPackage(directory: "/repo/Covered", name: "Covered", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false)
+    covered.coveredBy = "App"
+    let platforms: [ApplePlatform] = simulatorTests ? [.macOS, .iOS] : [.macOS]
+    let product = ValidationProject(
+      container: hasContainer ? ["-workspace", "/repo/App.xcworkspace"] : [], productSchemes: ["App", "Widget"], schemesWithTests: ["App"],
+      buildPlatforms: platforms, testPlatforms: platforms,
+      testDestinations: [.macOS: "platform=macOS", .iOS: "platform=iOS Simulator,id=fixture"], packages: [shared, standalone, covered]
+    )
+    let paths = ValidationPaths(repoPath: "/repo")
+    let sandbox = EnclosingSandbox(isNested: true)
+    let config = try ValidateCommand.parse([]).config(repoPath: "/repo")
+    let validation = ValidationPlan.steps(for: product, testSubmodules: .changed, excludedPackages: [], paths: paths, sandbox: sandbox, disableSwiftPMSandbox: true, quiet: true)
+    let preparation = PreparationPlan.steps(for: product, config: config, paths: paths, sandbox: sandbox)
+    let required = Set(validation.compactMap(xcodeContext))
+    let resolved = Set(preparation.compactMap(xcodeContext))
+    #expect(required.isSubset(of: resolved))
+  }
+
+  /// Extracts the execution identity while ignoring action, destination and output flags.
+  private func xcodeContext(_ step: PlannedStep) -> [String]? {
+    guard step.arguments.first == "xcodebuild", !step.skipped else { return nil }
+    return [step.workingDirectory ?? "/repo"]
+      + ["-workspace", "-project", "-scheme", "-derivedDataPath"].map { flag in
+        step.arguments.firstIndex(of: flag).map { step.arguments[$0 + 1] } ?? ""
+      }
+  }
+
   /// A local package eligible for targeted validation.
   private func localPackage() -> LocalPackage {
     LocalPackage(directory: "/repo/Dependencies/Core", name: "Core", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false)

@@ -18,7 +18,9 @@ enum PreparationPlan {
       )
     }
     let tested = ValidationPlan.testedPackages(project.packages, testSubmodules: config.testSubmodules, excluded: config.excludedPackages).filter { $0.coveredBy == nil }
-    let usesXcode = !project.container.isEmpty || (project.buildPlatforms + project.testPlatforms).contains { $0 != .macOS }
+    let usesXcode =
+      !project.container.isEmpty || (project.buildPlatforms + project.testPlatforms).contains { $0 != .macOS }
+      || project.productSchemes.contains(where: project.schemesWithTests.contains)
     if usesXcode {
       var schemes = project.productSchemes
       for scheme in tested.compactMap(\.scheme) where !schemes.contains(scheme) {

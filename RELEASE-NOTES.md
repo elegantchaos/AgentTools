@@ -6,6 +6,7 @@
 - Adds `agt prepare` and `agt prepare --plan` to resolve dependencies into the same SwiftPM and Xcode directories used by targeted and full validation, without building targets or running tests. Preparation and validation cannot concurrently own a checkout's build directories.
 - Reports dependency Git config/hooks permission denials with instructions to run an approved preparation step outside the sandbox, then retry validation inside it. Xcode scheme discovery now uses validation's dependency checkout directory.
 - Uses the main repository's name for the default Xcode scheme in linked worktrees, so a semantic worktree directory name does not change the expected scheme.
+- Plan commands wait for an active preparation/validation operation without replacing it and identify its PID and operation. The lock is retained under `.build/agt` during cleaning. Worktree setup rejects bare main repositories and warns when `.worktrees/` is not ignored.
 
 ## 3.10.1
 

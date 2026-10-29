@@ -1,5 +1,9 @@
 # Development Journal
 
+- [2026-10-29 PR #8 Review Fixes](2026-10-29-pr8-review-fixes.md) — Lock placement and waiting plans, creator safety/recovery tests, shared settings, ignore checks and cross-plan preparation coverage; decision proposal awaits separate confirmation.
+
+- [2026-10-29 PR #8 Review Assessment](2026-10-29-pr8-review-assessment.md) — Confirms Claude's main findings, refines plan-contention behavior and decision-record scope, and corrects the proposed ignore query.
+
 - [2026-10-29 Worktree Preparation](2026-10-29-worktree-preparation.md) — Worktree setup and dependency preparation commands, metadata-denial diagnostics, linked-worktree scheme discovery, and Bookish integration evidence.
 
 - [2026-10-27 PR #6 Review](2026-10-27-pr6-review.md) — Ready; optional sandbox status-message correction. Strict lint, targeted and full validation pass; isolated CLI configuration probe passes.

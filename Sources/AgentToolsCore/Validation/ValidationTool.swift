@@ -83,12 +83,12 @@ final class ValidationTool {
     if !config.planOnly, BackgroundLauncher.supersede(store: backgroundStore) {
       print("Stopped background validation before preparing its dependency directories.")
     }
-    let lock = try RepositoryOperationLock(repoPath: repoPath)
+    let lock = try RepositoryOperationLock(repoPath: repoPath, operation: config.planOnly ? "preparation planning" : "dependency preparation", wait: config.planOnly)
     defer { withExtendedLifetime(lock) {} }
     defer { runner.printSummary() }
     let paths = try ValidationPaths.prepare(repoPath: repoPath, clean: false)
     sandbox = try EnclosingSandbox.detect(using: process)
-    print("Preparing dependencies; no target builds or tests. Git metadata protection may require running `agt prepare` outside the sandbox with user approval.")
+    print(config.planOnly ? "Planning dependency preparation; discovery may evaluate manifests and resolve Xcode packages." : "Preparing dependencies; no target builds or tests. Git metadata protection may require running `agt prepare` outside the sandbox with user approval.")
     let packages = ValidationDiscovery.packageDirectories(repoPath: repoPath, overrides: config.packageDirsOverride, recursive: config.recursivePackageDiscovery)
     let workspace = ValidationDiscovery.workspace(override: config.workspaceOverride, repoPath: repoPath)
     let project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
@@ -229,7 +229,7 @@ final class ValidationTool {
 
   /// Runs the fast phase or full validation in this process, printing the summary whether or not it succeeds.
   private func validate() throws {
-    let lock = try RepositoryOperationLock(repoPath: repoPath)
+    let lock = try RepositoryOperationLock(repoPath: repoPath, operation: config.planOnly ? "validation planning" : "validation", background: config.backgroundWorker, wait: config.planOnly)
     defer { withExtendedLifetime(lock) {} }
     defer { runner.printSummary() }
 

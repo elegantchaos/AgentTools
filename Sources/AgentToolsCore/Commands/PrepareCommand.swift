@@ -23,7 +23,7 @@ struct PrepareCommand: AsyncParsableCommand {
   )
 
   /// Whether to list resolution commands instead of executing them.
-  @Flag(help: "List resolution steps. Discovery may evaluate manifests and resolve Xcode packages.")
+  @Flag(help: "List resolution steps, waiting for an active operation to finish. Discovery may evaluate manifests and resolve Xcode packages.")
   var plan = false
 
   /// Package and container selection shared with validation.
@@ -40,10 +40,8 @@ struct PrepareCommand: AsyncParsableCommand {
   /// Loads the destination checkout's own configuration before preparing it.
   static func prepare(repoPath: String, selection: RepositorySelectionOptions? = nil, plan: Bool = false, output: OutputOptions? = nil) async throws {
     let file = try await ProjectConfiguration.load(repoPath: repoPath).validate
-    var command = try ValidateCommand.parse([])
-    if let selection { command.selection = selection }
-    command.plan = plan
-    if let output { command.output = output }
-    try ValidationTool(config: command.config(repoPath: repoPath, file: file), repoPath: repoPath).prepare()
+    let selected = try selection ?? RepositorySelectionOptions.parse([])
+    let config = try selected.configuration(file: file, outputMode: output?.mode ?? .filtered, planOnly: plan)
+    try ValidationTool(config: config, repoPath: repoPath).prepare()
   }
 }

@@ -3,22 +3,22 @@
 //  Copyright © 2026 Elegant Chaos Limited. All rights reserved.
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-/// Validation settings resolved from `agt validate` options.
+/// Resolved repository settings shared by preparation and validation, plus validation-only action flags.
 struct ValidationConfig {
   /// Whether to remove previous validation output first.
-  let clean: Bool
+  var clean: Bool
   /// Whether to run the fast phase for uncommitted changes instead of full validation.
-  let fast: Bool
+  var fast: Bool
   /// Whether to run full validation in the background, after the fast phase when `fast` is set.
-  let background: Bool
+  var background: Bool
   /// Whether to report the background validation.
-  let status: Bool
+  var status: Bool
   /// Whether to wait for the background validation.
-  let wait: Bool
+  var wait: Bool
   /// Whether this process is a background validation.
-  let backgroundWorker: Bool
+  var backgroundWorker: Bool
   /// A target to run the fast phase for, instead of the changes.
-  let target: String?
+  var target: String?
   /// Explicit workspace path.
   let workspaceOverride: String?
   /// Explicit project path.

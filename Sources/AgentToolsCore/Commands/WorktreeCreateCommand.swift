@@ -16,7 +16,9 @@ struct WorktreeCreateCommand: AsyncParsableCommand {
       Run from a Git checkout. Creates the worktree under the main checkout, even when invoked in another worktree. \
       The base defaults to the invoking checkout's HEAD; uncommitted edits and machine-local configuration are not copied. \
       Names use lowercase letters, digits and single hyphens between words, up to 64 characters. \
-      Existing paths or branches are never reused or overwritten. If setup fails after creation, the worktree is retained \
+      Existing paths or branches are never reused or overwritten. Bare main repositories, including their linked \
+      checkouts, are rejected. Warns if .worktrees/ is not ignored, without changing ignore rules. \
+      If setup fails after creation, the worktree is retained \
       and a resume command is printed. Dependency preparation evaluates manifests. In sandboxes that protect Git metadata, \
       obtain user approval to run this command outside the sandbox, or ask the user to run it. Never escalates itself.
       """
