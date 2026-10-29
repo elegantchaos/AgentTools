@@ -18,3 +18,11 @@ Addressed the code findings from [Claude's review](https://github.com/elegantcha
 Targeted `agt validate --target AgentToolsCore` passed 218 tests after observed red/green steps for lock placement, bare-main rejection and the missing preparation context. Formatting reported no lint findings. Final fast/full validation and CLI contention checks follow on the committed code revision and will be recorded below.
 
 The shared validation workflow now distinguishes waiting plan commands from superseding execution. Actual Claude runtime acceptance remains outstanding. No permission fallback or sandbox-policy change was used.
+
+### Final Validation
+
+At code revision `8201d38a1a451616b9d13133cd268bb9cf64ebc1`, the rebuilt source CLI's `agt validate --background --quiet` completed full macOS validation in 23 seconds; `agt validate --wait --quiet` confirmed a pass for that unchanged working tree. All 218 tests in 32 suites passed. `agt format --check --quiet` passed strict lint across 137 Swift files with no findings.
+
+Started both `agt validate --plan --quiet` and `agt prepare --plan --quiet` while that background worker held the operation lock. Both printed its PID and operation, including the status/wait advice, and waited. They then completed successfully after the worker released ownership. Its background result remained passed; neither plan cancelled or superseded it. These are current CLI integration checks, not just the unit test's controlled release path.
+
+No Bookish integration was rerun for this follow-up: its previously recorded checks cover `7aa1e46`, while the new review fixes are covered by the current creator/plan regression suite, full AgentTools validation and live CLI contention checks. The subsequent evidence-only commit changes Markdown documentation; it does not invalidate the code revision's build/test evidence.
