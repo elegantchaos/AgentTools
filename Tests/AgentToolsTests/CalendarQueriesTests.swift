@@ -65,6 +65,7 @@ struct CalendarQueriesTests {
     }
     #expect(store.requestedEventWindows.isEmpty)
     #expect(store.requestedReminderRanges.isEmpty)
+    #expect(store.requestedAccess == (access == .notDetermined ? [.events, .reminders] : []))
   }
 
   /// An undetermined status explains sandbox ambiguity before suggesting another permission request.
@@ -73,7 +74,7 @@ struct CalendarQueriesTests {
     let message = CalendarQueries.AccessMissing(kind: kind, access: .notDetermined).description
     #expect(message.contains(kind.label))
     #expect(message.contains("outside the sandbox"))
-    #expect(message.contains("agt calendar authorize"))
+    #expect(message.contains("--no-prompt"))
     #expect(message.contains("already granted"))
   }
 
@@ -95,7 +96,7 @@ struct CalendarQueriesTests {
     let store = FakeCalendarStore(access: [.events: .granted, .reminders: .granted].merging([kind: .notDetermined]) { _, new in new }, requestError: NSError(domain: "NSMachErrorDomain", code: 4099))
     let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
     do {
-      _ = try await queries.authorize()
+      _ = try await query(kind, using: queries)
       Issue.record("Authorization should fail")
     } catch {
       let message = String(describing: error)
@@ -111,31 +112,68 @@ struct CalendarQueriesTests {
   @Test func authorizationPreservesCancellation() async throws {
     let store = FakeCalendarStore(access: [.events: .notDetermined], requestError: CancellationError())
     let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
-    await #expect(throws: CancellationError.self) { try await queries.authorize() }
+    await #expect(throws: CancellationError.self) { try await queries.events(in: window) }
   }
 
-  /// Authorizing asks for access to both kinds when undecided, and reports the outcome of each.
-  @Test func authorizeRequestsUndecidedAccess() async throws {
-    let store = FakeCalendarStore(access: [.events: .notDetermined, .reminders: .granted], grants: [.events: .granted])
+  /// Queries request only their own permission and continue after approval.
+  @Test(arguments: CalendarItemKind.allCases)
+  func requestsUndecidedAccess(kind: CalendarItemKind) async throws {
+    let store = FakeCalendarStore(access: [:], grants: [kind: .granted])
     let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
-
-    #expect(try await queries.authorize() == ["Calendars: granted", "Reminders: granted"])
-    #expect(store.requestedAccess == [.events])
+    _ = try await query(kind, using: queries)
+    #expect(store.requestedAccess == [kind])
+    #expect(store.requestedEventWindows.count == (kind == .events ? 1 : 0))
+    #expect(store.requestedReminderRanges.count == (kind == .reminders ? 1 : 0))
+    _ = try await query(kind, using: queries)
+    #expect(store.requestedAccess == [kind])
   }
 
-  /// Authorizing does not ask again once access has been denied, since macOS would not show the prompt.
-  @Test func authorizeReportsDeniedAccess() async throws {
-    let store = FakeCalendarStore(access: [.events: .denied, .reminders: .notDetermined], grants: [.reminders: .denied])
+  /// No-prompt queries never request permission, even when a request could succeed.
+  @Test(arguments: CalendarItemKind.allCases)
+  func noPromptSuppressesRequest(kind: CalendarItemKind) async throws {
+    let store = FakeCalendarStore(access: [:], grants: [kind: .granted])
     let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
-
-    #expect(
-      try await queries.authorize() == [
-        "Calendars: denied (change this in System Settings > Privacy & Security > Calendars)",
-        "Reminders: denied (change this in System Settings > Privacy & Security > Reminders)",
-      ]
-    )
-    #expect(store.requestedAccess == [.reminders])
+    await #expect(throws: CalendarQueries.AccessMissing(kind: kind, access: .notDetermined)) {
+      try await query(kind, using: queries, noPrompt: true)
+    }
+    #expect(store.requestedAccess.isEmpty)
+    #expect(store.requestedEventWindows.isEmpty)
+    #expect(store.requestedReminderRanges.isEmpty)
   }
+
+  /// No-prompt mode still reads data when access is already granted.
+  @Test(arguments: CalendarItemKind.allCases)
+  func noPromptUsesGrantedAccess(kind: CalendarItemKind) async throws {
+    let store = FakeCalendarStore(access: [kind: .granted])
+    let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
+    _ = try await query(kind, using: queries, noPrompt: true)
+    #expect(store.requestedAccess.isEmpty)
+    #expect(store.requestedEventWindows.count + store.requestedReminderRanges.count == 1)
+  }
+
+  /// A refused request reads nothing and is not repeated.
+  @Test(arguments: CalendarItemKind.allCases)
+  func requestDenied(kind: CalendarItemKind) async throws {
+    let store = FakeCalendarStore(access: [:], grants: [kind: .denied])
+    let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
+    for _ in 0..<2 {
+      await #expect(throws: CalendarQueries.AccessMissing(kind: kind, access: .denied)) {
+        try await query(kind, using: queries)
+      }
+    }
+    #expect(store.requestedAccess == [kind])
+    #expect(store.requestedEventWindows.isEmpty)
+    #expect(store.requestedReminderRanges.isEmpty)
+  }
+
+  /// Invokes the query for one resource without requesting the other.
+  private func query(_ kind: CalendarItemKind, using queries: CalendarQueries, noPrompt: Bool = false) async throws -> [String] {
+    switch kind {
+      case .events: try await queries.events(in: window, noPrompt: noPrompt)
+      case .reminders: try await queries.reminders(in: window, noPrompt: noPrompt)
+    }
+  }
+
 }
 
 /// An in-memory calendar store that records what it was asked for.

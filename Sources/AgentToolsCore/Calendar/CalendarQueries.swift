@@ -21,8 +21,8 @@ struct CalendarQueries {
   let report: CalendarReport
 
   /// Returns the lines for the events in `window`, or throws `AccessMissing` without reading anything.
-  func events(in window: CalendarWindow) async throws -> [String] {
-    try requireAccess(to: .events)
+  func events(in window: CalendarWindow, noPrompt: Bool = false) async throws -> [String] {
+    try await requireAccess(to: .events, noPrompt: noPrompt)
     return report.eventLines(store.events(in: window), calendars: settings.calendars)
   }
 
@@ -30,33 +30,12 @@ struct CalendarQueries {
   /// `AccessMissing` without reading anything.
   ///
   /// Older overdue reminders are left out, so a long tail of forgotten ones does not crowd out what is due now.
-  func reminders(in window: CalendarWindow) async throws -> [String] {
-    try requireAccess(to: .reminders)
+  func reminders(in window: CalendarWindow, noPrompt: Bool = false) async throws -> [String] {
+    try await requireAccess(to: .reminders, noPrompt: noPrompt)
     let start = report.calendar.date(byAdding: .day, value: -Self.overdueDays, to: window.start) ?? window.start
     return report.reminderLines(await store.incompleteReminders(due: start..<window.end), lists: settings.reminderLists)
   }
 
-  /// Asks for access to each kind of item that has not been decided yet, and returns a line describing the access to
-  /// each.
-  ///
-  /// macOS shows its prompt only for an undecided kind, so a denied kind is reported with where to change it.
-  func authorize() async throws -> [String] {
-    var lines: [String] = []
-    for kind in CalendarItemKind.allCases {
-      var access = store.access(to: kind)
-      if access == .notDetermined {
-        do {
-          access = try await store.requestAccess(to: kind)
-        } catch is CancellationError {
-          throw CancellationError()
-        } catch {
-          throw AuthorizationFailed(kind: kind, underlying: error as NSError)
-        }
-      }
-      lines.append(Self.line(for: kind, access: access))
-    }
-    return lines
-  }
 }
 
 extension CalendarQueries {
@@ -73,7 +52,7 @@ extension CalendarQueries {
       let reason = "agt cannot read \(kind.label) (\(access))."
       switch access {
         case .notDetermined:
-          return "\(reason) An agent sandbox can hide permission already granted to agt. Retry this query outside the sandbox using the agent's approval flow. If access is still not determined there, run `agt calendar authorize` outside the sandbox."
+          return "\(reason) An agent sandbox can hide permission already granted to agt. Retry this query outside the sandbox using the agent's approval flow. If --no-prompt was supplied, omit it to allow a permission request."
         case .denied, .writeOnly:
           return "\(reason) Enable full access in System Settings > Privacy & Security > \(kind.settingsPane)."
         case .restricted:
@@ -94,23 +73,22 @@ extension CalendarQueries {
 
     /// Identifies the operation and service error without claiming that the user refused access.
     var description: String {
-      "Could not request access to \(kind.label): \(underlying.localizedDescription) (\(underlying.domain), code \(underlying.code)). This failure does not confirm a permission denial. If running in an agent sandbox, retry `agt calendar authorize` outside the sandbox using the agent's approval flow."
+      "Could not request access to \(kind.label): \(underlying.localizedDescription) (\(underlying.domain), code \(underlying.code)). This failure does not confirm a permission denial. If running in an agent sandbox, retry this query outside the sandbox using the agent's approval flow."
     }
   }
 
-  /// Throws `AccessMissing` unless `agt` has full access to `kind`.
-  private func requireAccess(to kind: CalendarItemKind) throws {
-    let access = store.access(to: kind)
+  /// Requests undecided access unless prompting is suppressed, then requires a full grant before reading.
+  private func requireAccess(to kind: CalendarItemKind, noPrompt: Bool) async throws {
+    var access = store.access(to: kind)
+    if access == .notDetermined && !noPrompt {
+      do {
+        access = try await store.requestAccess(to: kind)
+      } catch is CancellationError {
+        throw CancellationError()
+      } catch {
+        throw AuthorizationFailed(kind: kind, underlying: error as NSError)
+      }
+    }
     guard access == .granted else { throw AccessMissing(kind: kind, access: access) }
-  }
-
-  /// Describes the access to one kind, such as `Calendars: granted`.
-  private static func line(for kind: CalendarItemKind, access: CalendarAccess) -> String {
-    switch access {
-      case .denied, .writeOnly:
-        "\(kind.settingsPane): \(access) (change this in System Settings > Privacy & Security > \(kind.settingsPane))"
-      default:
-        "\(kind.settingsPane): \(access)"
-    }
   }
 }

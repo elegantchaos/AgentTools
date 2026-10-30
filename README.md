@@ -94,15 +94,11 @@ Each item is one line: its date and time, its title, an event's location, and th
 
 macOS grants calendar and reminder access to the process responsible for the program asking, normally the terminal or app that started it. So that the permission belongs to `agt` alone, `agt calendar` runs a second `agt` as its own responsible process, using a private macOS function, and that process reads the calendar. Whenever `agt` is its own responsible process it accepts only `agt calendar` commands, so nothing else it could run, and nothing those would start, inherits the permission.
 
-Grant access once with:
+`events` and `reminders` request full access to their own resource when macOS reports that permission is undetermined, then continue the query if approved. Existing grants need no request. The permission is tied to the exact `agt` binary, so the first query after an update may prompt again. Denied or write-only access points to System Settings; restricted access reports the system policy.
 
-```shell
-agt calendar authorize
-```
+Use `--no-prompt` on either query to suppress permission requests, for example `agt calendar events --no-prompt`. The query still reads with an existing grant, but fails without reading anything when access is missing. There is no separate `authorize` command.
 
-It shows macOS's prompt, naming the `agt` executable, for calendars and for reminders. The permission is tied to the exact `agt` binary, so authorize again after each update. `events` and `reminders` never prompt. Denied or write-only access points to System Settings; restricted access reports the system policy.
-
-An agent sandbox can make EventKit report permission as undetermined even when access has already been granted. Retry the query outside the sandbox through the agent's approval flow before requesting permission again. If access is still undetermined there, run `agt calendar authorize` outside the sandbox. Authorization failures name the resource and preserve the macOS error domain and code; a failed request alone does not establish that permission was denied. These commands do not change sandbox settings or escalate themselves.
+An agent sandbox can make EventKit report permission as undetermined even when access has already been granted. Run queries outside the sandbox through the agent's approval flow. If a sandboxed query fails, retry it outside; a failed request alone does not establish that permission was denied. Permission-request failures name the resource and preserve the macOS error domain and code. These commands do not change sandbox settings or escalate themselves.
 
 To include only some calendars or reminder lists, name them in `~/.agt/config.json`:
 
