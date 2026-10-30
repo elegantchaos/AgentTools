@@ -29,3 +29,17 @@ An unanswered dialog may block a query, with no timeout. The README now directs 
 Sam asked for certainty that tests cannot reach real calendars or reminders, or change them. An audit found none did. `CalendarIsolationTests` now enforces this from source text: tests may not name EventKit, the real store, `CalendarRunner` or the launcher's `main`, and calendar test files may not call `run()`; only `EventKitCalendarStore.swift` imports EventKit; only `CalendarRunner` creates the real store; and the real store may not use EventKit's write, reset or item-creation APIs. Temporarily adding violations to the store and a test file made the suite fail; both were reverted. This is a text check, so it guards against accidents and not deliberate circumvention.
 
 The new tests failed to compile before implementation. In Claude's sandbox the target run passed all calendar suites, but 10 `WorktreeCreatorTests` issues came from Git fixtures being denied hook-template copies. Full `agt validate` outside the sandbox passes the macOS build and all 228 tests in 33 suites. Live permission dialogs remain untested and need Sam to run them.
+
+## Follow-up: Live Permission Results
+
+Sam ran the dialogs from Terminal, using copies re-signed with their own identifier, since `tccutil reset` cannot find a bare executable by bundle identifier and resetting without one would affect every app. A new code signature started as not determined. `--no-prompt` failed without a dialog, and refusing the dialog reported denied with Settings advice. Approving printed complete events in the same run, and a later run printed identical output with no dialog. Reminders asked separately and also read in the same run. Whether the new `EKEventStore` was needed is still unknown, since the old path was not tried.
+
+An unanswered dialog stayed open for more than five minutes with the query blocked, and it stayed open after Ctrl-C. A new query started while it was open showed no second dialog and resumed when it was approved. Queries now wait at most two minutes, and the message says the dialog may still be open.
+
+After that Ctrl-C, event output appeared behind a shell prompt, which suggests that the relaunched child outlived its parent. This was inferred from the output and the cause was not found: nothing in `agt` handles SIGINT. A relaunched query now exits when its parent does, whatever ended the parent.
+
+The events also showed a Zoom URL with its password in a location, against Decision 0007's rule that URLs never reach the caller. `CalendarText.singleLine` now replaces links in every field with `[link]`, before truncating.
+
+The new text and timeout tests failed to compile before implementation. The parent watch has no automated test, because exercising it needs a real relaunch.
+
+Full `agt validate` outside the sandbox passes the macOS build and all 233 tests in 33 suites. Sam then ran a fresh copy live. An unanswered request exited after two minutes with the new message and left the dialog open. After Ctrl-C during a second request, no process remained, and approving the dialog printed nothing. A later query showed the Zoom location as `[link]` and its other lines were unchanged.

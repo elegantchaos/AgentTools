@@ -20,9 +20,12 @@ struct CalendarQueries {
   /// How items are formatted.
   let report: CalendarReport
 
+  /// How long to wait for an answer to a permission request. macOS keeps its dialog open indefinitely.
+  var requestTimeout: Duration = .seconds(120)
+
   /// Returns the lines for the events in `window`, requesting undecided permission unless `noPrompt` is set.
   ///
-  /// Throws `AccessMissing` or `AuthorizationFailed` without reading anything.
+  /// Throws `AccessMissing`, `AuthorizationFailed` or `AuthorizationTimedOut` without reading anything.
   func events(in window: CalendarWindow, noPrompt: Bool = false) async throws -> [String] {
     try await requireAccess(to: .events, noPrompt: noPrompt)
     return report.eventLines(store.events(in: window), calendars: settings.calendars)
@@ -31,7 +34,8 @@ struct CalendarQueries {
   /// Returns the lines for the incomplete reminders due in `window`, or overdue by up to `overdueDays`, requesting
   /// undecided permission unless `noPrompt` is set.
   ///
-  /// Throws `AccessMissing` or `AuthorizationFailed` without reading anything. Older overdue reminders are left out, so a long tail of forgotten ones does not crowd out what is due now.
+  /// Throws `AccessMissing`, `AuthorizationFailed` or `AuthorizationTimedOut` without reading anything. Older overdue
+  /// reminders are left out, so a long tail of forgotten ones does not crowd out what is due now.
   func reminders(in window: CalendarWindow, noPrompt: Bool = false) async throws -> [String] {
     try await requireAccess(to: .reminders, noPrompt: noPrompt)
     let start = report.calendar.date(byAdding: .day, value: -Self.overdueDays, to: window.start) ?? window.start
@@ -84,14 +88,38 @@ extension CalendarQueries {
     }
   }
 
+  /// Carries the store into the task making a permission request.
+  ///
+  /// Only that task uses the store until a result arrives, and after a timeout the query throws without using it.
+  private struct PermissionRequester: @unchecked Sendable {
+    /// The store to ask.
+    let store: any CalendarStore
+  }
+
+  /// Nobody answered a permission request in time.
+  struct AuthorizationTimedOut: Error, Equatable, CustomStringConvertible {
+    /// The resource whose permission was being requested.
+    let kind: CalendarItemKind
+
+    /// How long the request waited.
+    let seconds: Int64
+
+    /// Explains that the request is still open, and how to avoid waiting for one.
+    var description: String {
+      "Nobody answered the request for access to \(kind.label) within \(seconds) seconds, and nothing was read. The macOS dialog may still be on screen: answer it, then run this query again. Use --no-prompt where nobody can answer a dialog."
+    }
+  }
+
   /// Requests undecided access unless prompting is suppressed, then requires a full grant before reading.
   private func requireAccess(to kind: CalendarItemKind, noPrompt: Bool) async throws {
     var access = store.access(to: kind)
     if access == .notDetermined && !noPrompt {
       do {
-        access = try await store.requestAccess(to: kind)
+        access = try await requestWithTimeout(to: kind)
       } catch is CancellationError {
         throw CancellationError()
+      } catch let timedOut as AuthorizationTimedOut {
+        throw timedOut
       } catch {
         throw AuthorizationFailed(kind: kind, underlying: error as NSError)
       }
@@ -99,5 +127,33 @@ extension CalendarQueries {
     guard access == .granted else {
       throw AccessMissing(kind: kind, access: access, requestSuppressed: noPrompt && access == .notDetermined)
     }
+  }
+
+  /// Returns the outcome of a permission request, or throws `AuthorizationTimedOut` when it takes too long.
+  ///
+  /// EventKit cannot cancel a request, so the two tasks race and the first result wins, leaving the request behind.
+  private func requestWithTimeout(to kind: CalendarItemKind) async throws -> CalendarAccess {
+    let requester = PermissionRequester(store: store)
+    let timeout = requestTimeout
+    let (results, continuation) = AsyncStream.makeStream(of: Result<CalendarAccess, any Error>.self)
+    let request = Task {
+      do {
+        continuation.yield(.success(try await requester.store.requestAccess(to: kind)))
+      } catch {
+        continuation.yield(.failure(error))
+      }
+    }
+    let timer = Task {
+      try await Task.sleep(for: timeout)
+      continuation.yield(.failure(AuthorizationTimedOut(kind: kind, seconds: timeout.components.seconds)))
+    }
+    defer {
+      request.cancel()
+      timer.cancel()
+    }
+    for await result in results {
+      return try result.get()
+    }
+    throw CancellationError()
   }
 }

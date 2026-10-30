@@ -18,7 +18,8 @@ Calendar and reminder access is an `agt calendar` command family in the single `
 - `agt calendar` relaunches `agt` with the private `responsibility_spawnattrs_setdisclaim` spawn attribute, so macOS charges the permission to `agt` itself. Output passes straight through the inherited standard streams.
 - Whenever `agt` is its own responsible process, found with the private `responsibility_get_pid_responsible_for_pid`, it accepts only the calendar commands, so nothing else can run, or start other processes, with the permission.
 - `events` and `reminders` request full access to their own resource when permission is undetermined, then continue if granted. Both accept `--no-prompt` to suppress requests and fail without reading when access is missing. Existing grants need no request; denied, write-only and restricted states fail with recovery advice. There is no separate `authorize` command.
-- What reaches the caller is limited in code: read-only access; at most 14 days ahead; events give start, end, all-day, title, location and calendar; reminders give only incomplete ones, with title, due date and list; text is reduced to one line of at most 80 characters; never notes, attendees, URLs or attachments.
+- A permission request waits at most two minutes, because macOS keeps an unanswered dialog open indefinitely. A relaunched `agt` exits when the `agt` that started it exits, so that a cancelled query cannot read or print later.
+- What reaches the caller is limited in code: read-only access; at most 14 days ahead; events give start, end, all-day, title, location and calendar; reminders give only incomplete ones, with title, due date and list; text is reduced to one line of at most 80 characters, with any link in it replaced; never notes, attendees, URLs or attachments.
 - A user configuration file names the calendars and reminder lists to include. It filters noise; it is not a security boundary, since an agent can edit it.
 
 ## Alternatives

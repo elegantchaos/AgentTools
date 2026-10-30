@@ -125,6 +125,29 @@ struct CalendarQueriesTests {
     await #expect(throws: CancellationError.self) { try await queries.events(in: window) }
   }
 
+  /// A dialog nobody answers ends the query with advice, without reading anything.
+  @Test(arguments: CalendarItemKind.allCases)
+  func unansweredRequestTimesOut(kind: CalendarItemKind) async throws {
+    let store = FakeCalendarStore(access: [:], requestHangs: true)
+    var queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
+    queries.requestTimeout = .milliseconds(10)
+    let probe = queries
+    await #expect(throws: CalendarQueries.AuthorizationTimedOut(kind: kind, seconds: 0)) {
+      try await query(kind, using: probe)
+    }
+    #expect(store.requestedEventWindows.isEmpty)
+    #expect(store.requestedReminderRanges.isEmpty)
+  }
+
+  /// The timeout message says the dialog may still be open and how to avoid waiting.
+  @Test func timeoutExplainsRecovery() {
+    let message = CalendarQueries.AuthorizationTimedOut(kind: .reminders, seconds: 120).description
+    #expect(message.contains("reminders"))
+    #expect(message.contains("120 seconds"))
+    #expect(message.contains("still be on screen"))
+    #expect(message.contains("--no-prompt"))
+  }
+
   /// Queries request only their own permission and continue after approval.
   @Test(arguments: CalendarItemKind.allCases)
   func requestsUndecidedAccess(kind: CalendarItemKind) async throws {
@@ -197,6 +220,9 @@ private final class FakeCalendarStore: CalendarStore {
   /// An error returned by permission requests, when supplied.
   private let requestError: (any Error)?
 
+  /// Whether permission requests wait as an unanswered dialog does.
+  private let requestHangs: Bool
+
   /// The events the store holds.
   private let storedEvents: [CalendarEvent]
 
@@ -213,7 +239,8 @@ private final class FakeCalendarStore: CalendarStore {
   private(set) var requestedReminderRanges: [Range<Date>] = []
 
   /// Creates a store with the given access, request outcomes and contents.
-  init(access: [CalendarItemKind: CalendarAccess], grants: [CalendarItemKind: CalendarAccess] = [:], events: [CalendarEvent] = [], reminders: [CalendarReminder] = [], requestError: (any Error)? = nil) {
+  init(access: [CalendarItemKind: CalendarAccess], grants: [CalendarItemKind: CalendarAccess] = [:], events: [CalendarEvent] = [], reminders: [CalendarReminder] = [], requestError: (any Error)? = nil, requestHangs: Bool = false) {
+    self.requestHangs = requestHangs
     currentAccess = access
     self.grants = grants
     storedEvents = events
@@ -229,6 +256,7 @@ private final class FakeCalendarStore: CalendarStore {
   /// Records the request and applies its configured outcome.
   func requestAccess(to kind: CalendarItemKind) async throws -> CalendarAccess {
     requestedAccess.append(kind)
+    if requestHangs { try await Task.sleep(for: .seconds(3600)) }
     if let requestError { throw requestError }
     if let grant = grants[kind] {
       currentAccess[kind] = grant
