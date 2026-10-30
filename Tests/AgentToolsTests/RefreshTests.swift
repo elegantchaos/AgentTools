@@ -11,14 +11,24 @@ import Testing
 
 /// Tests the parts of `agt refresh` that find runtimes, plan plugin installs, and check helper copies.
 struct RefreshTests {
-  /// Terminal access and interrupt signals share the refresh process's foreground group.
-  @Test func pluginCommandSharesProcessGroup() throws {
+  /// Plugin commands inherit the caller's process group; the probe also rejects a mismatched group.
+  @Test(arguments: [true, false])
+  func pluginCommandSharesProcessGroup(matchesGroup: Bool) throws {
     try withTemporaryDirectory { root in
+      let probe = try makeProcessGroupProbe(in: root)
       let tool = RefreshTool(repoRoot: root, locator: RuntimeCommandLocator(environment: [:], homeDirectory: root, rootDirectory: root))
-      try tool.runPassingThrough(
-        URL(fileURLWithPath: "/bin/sh"),
-        ["-c", "group=$(/bin/ps -o pgid= -p $$); [ \"$group\" -eq \"$1\" ] || exit 43", "plugin", String(getpgrp())]
-      )
+      let expectedGroup = getpgrp() + (matchesGroup ? 0 : 1)
+      let arguments = [String(expectedGroup)]
+      if matchesGroup {
+        try tool.runPassingThrough(probe, arguments)
+      } else {
+        do {
+          try tool.runPassingThrough(probe, arguments)
+          Issue.record("Expected the probe to reject a different process group.")
+        } catch let error as ToolError {
+          #expect(error.description == "\(probe.path) \(expectedGroup) failed with status 43")
+        }
+      }
     }
   }
 
@@ -143,6 +153,29 @@ struct RefreshTests {
       try write("changed", to: root.appendingPathComponent("plugins/other/skills/tool/scripts/ensure-agt.sh"))
       #expect(try HelperCopies.drifted(in: root) == ["plugins/other/skills/tool/scripts/ensure-agt.sh"])
     }
+  }
+
+  /// Builds a child executable that checks its own process group without inspecting other processes.
+  private func makeProcessGroupProbe(in root: URL) throws -> URL {
+    let source = root.appendingPathComponent("process-group.c")
+    let executable = root.appendingPathComponent("process-group")
+    try write(
+      """
+      #include <stdlib.h>
+      #include <unistd.h>
+
+      int main(int argc, char **argv) {
+        if (argc != 2) return 2;
+        return getpgrp() == (pid_t)strtol(argv[1], NULL, 10) ? 0 : 43;
+      }
+      """, to: source)
+    let compiler = Process()
+    compiler.executableURL = URL(fileURLWithPath: "/usr/bin/cc")
+    compiler.arguments = [source.path, "-o", executable.path]
+    try compiler.run()
+    compiler.waitUntilExit()
+    try #require(compiler.terminationStatus == 0, "Could not build the process-group probe.")
+    return executable
   }
 
   /// Runs `body` with a temporary directory that is removed afterwards.
