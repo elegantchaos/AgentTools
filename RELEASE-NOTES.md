@@ -1,5 +1,14 @@
 # Release Notes
 
+## 3.13.0
+
+- `agt calendar events` and `agt calendar reminders` now request their own permission when macOS reports it as undetermined, and continue the query once approved. This removes `agt calendar authorize`.
+- Adds `--no-prompt` to both queries, for anything unattended. It suppresses permission requests and still reads with an existing grant.
+- A permission request waits at most two minutes, then fails without reading anything. macOS leaves its dialog open, and answering it later still takes effect.
+- Missing-access messages now match the state: undetermined access explains that an agent sandbox can hide an existing grant, denied and write-only access point to System Settings, and restricted access names the system policy. Failed requests keep the macOS error domain and code.
+- Links in calendar text are replaced with `[link]`, so meeting URLs and any passwords in them no longer reach the caller.
+- A relaunched calendar query exits when the `agt` that started it exits, so a cancelled query cannot read or print later.
+
 ## 3.12.0
 
 - Adds `agt worktree create <name>` to create a feature worktree under the main checkout, initialise submodules and prepare dependencies. Failed setup retains the worktree and reports how to resume.
