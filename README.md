@@ -100,7 +100,9 @@ Grant access once with:
 agt calendar authorize
 ```
 
-It shows macOS's prompt, naming the `agt` executable, for calendars and for reminders. The permission is tied to the exact `agt` binary, so authorize again after each update. `events` and `reminders` never prompt; without access they say to run `authorize`.
+It shows macOS's prompt, naming the `agt` executable, for calendars and for reminders. The permission is tied to the exact `agt` binary, so authorize again after each update. `events` and `reminders` never prompt. Denied or write-only access points to System Settings; restricted access reports the system policy.
+
+An agent sandbox can make EventKit report permission as undetermined even when access has already been granted. Retry the query outside the sandbox through the agent's approval flow before requesting permission again. If access is still undetermined there, run `agt calendar authorize` outside the sandbox. Authorization failures name the resource and preserve the macOS error domain and code; a failed request alone does not establish that permission was denied. These commands do not change sandbox settings or escalate themselves.
 
 To include only some calendars or reminder lists, name them in `~/.agt/config.json`:
 

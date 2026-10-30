@@ -45,7 +45,13 @@ struct CalendarQueries {
     for kind in CalendarItemKind.allCases {
       var access = store.access(to: kind)
       if access == .notDetermined {
-        access = try await store.requestAccess(to: kind)
+        do {
+          access = try await store.requestAccess(to: kind)
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch {
+          throw AuthorizationFailed(kind: kind, underlying: error as NSError)
+        }
       }
       lines.append(Self.line(for: kind, access: access))
     }
@@ -62,9 +68,33 @@ extension CalendarQueries {
     /// The access `agt` has to it.
     let access: CalendarAccess
 
-    /// Explains what to run.
+    /// Explains the reported state without treating an inaccessible permission service as a refused grant.
     var description: String {
-      "agt does not have access to \(kind.label) (\(access)). Run `agt calendar authorize`, then try again."
+      let reason = "agt cannot read \(kind.label) (\(access))."
+      switch access {
+        case .notDetermined:
+          return "\(reason) An agent sandbox can hide permission already granted to agt. Retry this query outside the sandbox using the agent's approval flow. If access is still not determined there, run `agt calendar authorize` outside the sandbox."
+        case .denied, .writeOnly:
+          return "\(reason) Enable full access in System Settings > Privacy & Security > \(kind.settingsPane)."
+        case .restricted:
+          return "\(reason) A system policy restricts access; another authorization request cannot override that policy."
+        case .granted:
+          return reason
+      }
+    }
+  }
+
+  /// A permission request failed before its outcome could be reported.
+  struct AuthorizationFailed: Error, CustomStringConvertible {
+    /// The resource whose permission was being requested.
+    let kind: CalendarItemKind
+
+    /// The original macOS error, retained for diagnosis.
+    let underlying: NSError
+
+    /// Identifies the operation and service error without claiming that the user refused access.
+    var description: String {
+      "Could not request access to \(kind.label): \(underlying.localizedDescription) (\(underlying.domain), code \(underlying.code)). This failure does not confirm a permission denial. If running in an agent sandbox, retry `agt calendar authorize` outside the sandbox using the agent's approval flow."
     }
   }
 

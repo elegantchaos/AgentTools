@@ -51,7 +51,7 @@ struct CalendarQueriesTests {
     #expect(store.requestedReminderRanges == [window.start.addingTimeInterval(-7 * 86_400)..<window.end])
   }
 
-  /// Without access, the queries read nothing and point at `agt calendar authorize`.
+  /// Without access, the queries read nothing.
   @Test(arguments: [CalendarAccess.notDetermined, .denied, .restricted, .writeOnly])
   func refusesWithoutAccess(access: CalendarAccess) async throws {
     let store = FakeCalendarStore(access: [.events: access, .reminders: access])
@@ -67,11 +67,51 @@ struct CalendarQueriesTests {
     #expect(store.requestedReminderRanges.isEmpty)
   }
 
-  /// The missing-access error tells the user what to run.
-  @Test func missingAccessNamesTheAuthorizeCommand() {
-    let error = CalendarQueries.AccessMissing(kind: .reminders, access: .denied)
-    #expect(error.description.contains("agt calendar authorize"))
-    #expect(error.description.contains("reminders"))
+  /// An undetermined status explains sandbox ambiguity before suggesting another permission request.
+  @Test(arguments: CalendarItemKind.allCases)
+  func undeterminedAccessExplainsSandbox(kind: CalendarItemKind) {
+    let message = CalendarQueries.AccessMissing(kind: kind, access: .notDetermined).description
+    #expect(message.contains(kind.label))
+    #expect(message.contains("outside the sandbox"))
+    #expect(message.contains("agt calendar authorize"))
+    #expect(message.contains("already granted"))
+  }
+
+  /// Refused grants point to Settings, while restrictions do not promise that authorization can override policy.
+  @Test(arguments: [CalendarAccess.denied, .writeOnly, .restricted])
+  func accessAdviceMatchesStatus(access: CalendarAccess) {
+    let message = CalendarQueries.AccessMissing(kind: .reminders, access: access).description
+    #expect(message.contains("agt calendar authorize") == false)
+    if access == .restricted {
+      #expect(message.contains("policy"))
+    } else {
+      #expect(message.contains("System Settings > Privacy & Security > Reminders"))
+    }
+  }
+
+  /// Failed requests name the resource and preserve the service error with actionable sandbox advice.
+  @Test(arguments: CalendarItemKind.allCases)
+  func authorizationFailureExplainsServiceAccess(kind: CalendarItemKind) async throws {
+    let store = FakeCalendarStore(access: [.events: .granted, .reminders: .granted].merging([kind: .notDetermined]) { _, new in new }, requestError: NSError(domain: "NSMachErrorDomain", code: 4099))
+    let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
+    do {
+      _ = try await queries.authorize()
+      Issue.record("Authorization should fail")
+    } catch {
+      let message = String(describing: error)
+      #expect(message.contains(kind.label))
+      #expect(message.contains("NSMachErrorDomain"))
+      #expect(message.contains("4099"))
+      #expect(message.contains("outside the sandbox"))
+      #expect(message.contains("does not confirm a permission denial"))
+    }
+  }
+
+  /// Cancellation remains cancellation rather than becoming a permission diagnostic.
+  @Test func authorizationPreservesCancellation() async throws {
+    let store = FakeCalendarStore(access: [.events: .notDetermined], requestError: CancellationError())
+    let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
+    await #expect(throws: CancellationError.self) { try await queries.authorize() }
   }
 
   /// Authorizing asks for access to both kinds when undecided, and reports the outcome of each.
@@ -106,6 +146,9 @@ private final class FakeCalendarStore: CalendarStore {
   /// The access that a request for each kind results in; missing kinds stay as they were.
   private let grants: [CalendarItemKind: CalendarAccess]
 
+  /// An error returned by permission requests, when supplied.
+  private let requestError: (any Error)?
+
   /// The events the store holds.
   private let storedEvents: [CalendarEvent]
 
@@ -122,11 +165,12 @@ private final class FakeCalendarStore: CalendarStore {
   private(set) var requestedReminderRanges: [Range<Date>] = []
 
   /// Creates a store with the given access, request outcomes and contents.
-  init(access: [CalendarItemKind: CalendarAccess], grants: [CalendarItemKind: CalendarAccess] = [:], events: [CalendarEvent] = [], reminders: [CalendarReminder] = []) {
+  init(access: [CalendarItemKind: CalendarAccess], grants: [CalendarItemKind: CalendarAccess] = [:], events: [CalendarEvent] = [], reminders: [CalendarReminder] = [], requestError: (any Error)? = nil) {
     currentAccess = access
     self.grants = grants
     storedEvents = events
     storedReminders = reminders
+    self.requestError = requestError
   }
 
   /// Returns the current access for a kind.
@@ -137,6 +181,7 @@ private final class FakeCalendarStore: CalendarStore {
   /// Records the request and applies its configured outcome.
   func requestAccess(to kind: CalendarItemKind) async throws -> CalendarAccess {
     requestedAccess.append(kind)
+    if let requestError { throw requestError }
     if let grant = grants[kind] {
       currentAccess[kind] = grant
     }
