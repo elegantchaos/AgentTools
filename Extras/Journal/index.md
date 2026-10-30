@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-10-30 AgentTools 3.13.0](2026-10-30-release-3.13.0.md) — Release preparation for query permission requests, `--no-prompt`, request timeouts and link replacement; Agents #40 remains a separate merge.
+
 - [2026-10-30 Calendar Access Diagnostics](2026-10-30-calendar-access-diagnostics.md) — Automatic query permission requests with `--no-prompt`, removal of authorize, revised Decision 0007, and state-specific sandbox/service diagnostics.
 
 - [2026-10-29 AgentTools 3.12.0](2026-10-29-release-3.12.0.md) — Release preparation, validated code revision and the authorised merge/publish/Mint sequence; shared guidance rollout remains separate.
