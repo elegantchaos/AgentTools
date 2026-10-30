@@ -26,11 +26,13 @@ Calendar and reminder access is an `agt calendar` command family in the single `
 - Rejected: a separate helper executable or app bundle holding the permission. Any process running as the user can launch whichever program holds it, so a helper suggests a boundary that does not exist, and adds a second program to install and keep in step.
 - Rejected: AppleScript or Shortcuts. They give the host control of Calendar and Reminders, including creating and changing items.
 - Rejected: third-party tools such as icalBuddy, which leave the permission with the terminal, and calendar connectors, which add OAuth scopes and a third party.
+- Rejected, in the 2026-10-30 revision: a separate `agt calendar authorize` as the only command that can prompt. Queries already fail without access, so it only added a step between a failed query and the same macOS dialog, which still has to be approved by the user. `--no-prompt` keeps a way to guarantee that a query shows no dialog.
 - Retained for later: the public alternative to the private spawn attribute, an app bundle launched through LaunchServices, if Apple removes the private functions.
 
 ## Consequences
 
 - `agt` depends on private API for this command family. If it disappears, `agt calendar` reports that it is unavailable and nothing else in `agt` changes.
 - The grant is pinned to the code hash of the ad-hoc signed `agt`, so the first query after each `agt` update may request a new approval. A modified `agt` cannot read calendars without the user seeing a prompt.
+- The relaunch changes which process holds the permission, but does not leave an enclosing agent sandbox. Inside one, EventKit can report undetermined access despite an existing grant, and permission requests can fail, so queries retry outside it through the agent's approval flow.
 - `Package.swift` passes the Info.plist to the linker with unsafe flags, which SwiftPM allows because `agt` is always built as a root package.
 - The entry point checks the responsible process before parsing the command line. This extends [0004](0004-executable-is-only-an-entry-point.md): the executable still only calls into `AgentToolsCore`.

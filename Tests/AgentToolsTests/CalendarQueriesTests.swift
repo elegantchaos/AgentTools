@@ -74,7 +74,17 @@ struct CalendarQueriesTests {
     let message = CalendarQueries.AccessMissing(kind: kind, access: .notDetermined).description
     #expect(message.contains(kind.label))
     #expect(message.contains("outside the sandbox"))
-    #expect(message.contains("--no-prompt"))
+    #expect(message.contains("already granted"))
+    #expect(message.contains("--no-prompt") == false)
+  }
+
+  /// A suppressed request says so, and does not tell the caller to remove the suppression.
+  @Test(arguments: CalendarItemKind.allCases)
+  func suppressedRequestIsReported(kind: CalendarItemKind) {
+    let message = CalendarQueries.AccessMissing(kind: kind, access: .notDetermined, requestSuppressed: true).description
+    #expect(message.contains(kind.label))
+    #expect(message.contains("--no-prompt suppressed"))
+    #expect(message.contains("omit") == false)
     #expect(message.contains("already granted"))
   }
 
@@ -133,7 +143,7 @@ struct CalendarQueriesTests {
   func noPromptSuppressesRequest(kind: CalendarItemKind) async throws {
     let store = FakeCalendarStore(access: [:], grants: [kind: .granted])
     let queries = CalendarQueries(store: store, settings: CalendarSettings(calendars: nil, reminderLists: nil), report: report)
-    await #expect(throws: CalendarQueries.AccessMissing(kind: kind, access: .notDetermined)) {
+    await #expect(throws: CalendarQueries.AccessMissing(kind: kind, access: .notDetermined, requestSuppressed: true)) {
       try await query(kind, using: queries, noPrompt: true)
     }
     #expect(store.requestedAccess.isEmpty)

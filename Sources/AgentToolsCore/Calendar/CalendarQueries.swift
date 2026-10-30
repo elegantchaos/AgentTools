@@ -5,8 +5,8 @@
 
 import Foundation
 
-/// The calendar commands' work, once `agt` is running as its own responsible process: checking access, reading
-/// items from a store, and formatting them.
+/// The calendar commands' work, once `agt` is running as its own responsible process: checking or requesting access,
+/// reading items from a store, and formatting them.
 struct CalendarQueries {
   /// The most days overdue a reminder can be and still be listed.
   static let overdueDays = 7
@@ -20,16 +20,18 @@ struct CalendarQueries {
   /// How items are formatted.
   let report: CalendarReport
 
-  /// Returns the lines for the events in `window`, or throws `AccessMissing` without reading anything.
+  /// Returns the lines for the events in `window`, requesting undecided permission unless `noPrompt` is set.
+  ///
+  /// Throws `AccessMissing` or `AuthorizationFailed` without reading anything.
   func events(in window: CalendarWindow, noPrompt: Bool = false) async throws -> [String] {
     try await requireAccess(to: .events, noPrompt: noPrompt)
     return report.eventLines(store.events(in: window), calendars: settings.calendars)
   }
 
-  /// Returns the lines for the incomplete reminders due in `window`, or overdue by up to `overdueDays`, or throws
-  /// `AccessMissing` without reading anything.
+  /// Returns the lines for the incomplete reminders due in `window`, or overdue by up to `overdueDays`, requesting
+  /// undecided permission unless `noPrompt` is set.
   ///
-  /// Older overdue reminders are left out, so a long tail of forgotten ones does not crowd out what is due now.
+  /// Throws `AccessMissing` or `AuthorizationFailed` without reading anything. Older overdue reminders are left out, so a long tail of forgotten ones does not crowd out what is due now.
   func reminders(in window: CalendarWindow, noPrompt: Bool = false) async throws -> [String] {
     try await requireAccess(to: .reminders, noPrompt: noPrompt)
     let start = report.calendar.date(byAdding: .day, value: -Self.overdueDays, to: window.start) ?? window.start
@@ -47,12 +49,17 @@ extension CalendarQueries {
     /// The access `agt` has to it.
     let access: CalendarAccess
 
+    /// Whether `--no-prompt` stopped `agt` asking for undecided access.
+    var requestSuppressed = false
+
     /// Explains the reported state without treating an inaccessible permission service as a refused grant.
     var description: String {
       let reason = "agt cannot read \(kind.label) (\(access))."
       switch access {
+        case .notDetermined where requestSuppressed:
+          return "\(reason) --no-prompt suppressed the permission request. An agent sandbox can also hide permission already granted to agt, so this does not show that access is missing."
         case .notDetermined:
-          return "\(reason) An agent sandbox can hide permission already granted to agt. Retry this query outside the sandbox using the agent's approval flow. If --no-prompt was supplied, omit it to allow a permission request."
+          return "\(reason) An agent sandbox can hide permission already granted to agt. Retry this query outside the sandbox using the agent's approval flow."
         case .denied, .writeOnly:
           return "\(reason) Enable full access in System Settings > Privacy & Security > \(kind.settingsPane)."
         case .restricted:
@@ -89,6 +96,8 @@ extension CalendarQueries {
         throw AuthorizationFailed(kind: kind, underlying: error as NSError)
       }
     }
-    guard access == .granted else { throw AccessMissing(kind: kind, access: access) }
+    guard access == .granted else {
+      throw AccessMissing(kind: kind, access: access, requestSuppressed: noPrompt && access == .notDetermined)
+    }
   }
 }
