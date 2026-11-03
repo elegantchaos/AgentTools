@@ -13,7 +13,7 @@ import Foundation
 /// the privacy permission belongs to `agt`.
 final class EventKitCalendarStore: CalendarStore {
   /// The EventKit store.
-  private let store = EKEventStore()
+  private var store = EKEventStore()
 
   /// Returns EventKit's authorization status for `kind`.
   func access(to kind: CalendarItemKind) -> CalendarAccess {
@@ -27,11 +27,15 @@ final class EventKitCalendarStore: CalendarStore {
   }
 
   /// Asks for full access to `kind`, prompting the user.
+  ///
+  /// Later reads use a new `EKEventStore`, so that they cannot see a view of the data from before the grant. Replacing
+  /// the instance only affects this process; it changes nothing in the user's calendars.
   func requestAccess(to kind: CalendarItemKind) async throws -> CalendarAccess {
     switch kind {
       case .events: _ = try await store.requestFullAccessToEvents()
       case .reminders: _ = try await store.requestFullAccessToReminders()
     }
+    store = EKEventStore()
     return access(to: kind)
   }
 

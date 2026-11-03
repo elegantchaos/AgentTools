@@ -44,7 +44,20 @@ struct CalendarGuardTests {
     let events = try #require(command as? CalendarEventsCommand)
     #expect(events.days == 3)
     #expect(try CalendarOnlyCommand.parseAsRoot(["calendar", "reminders"]) is CalendarRemindersCommand)
-    #expect(try CalendarOnlyCommand.parseAsRoot(["calendar", "authorize"]) is CalendarAuthorizeCommand)
+    #expect(throws: (any Error).self) { _ = try CalendarOnlyCommand.parseAsRoot(["calendar", "authorize"]) }
+    #expect(throws: (any Error).self) { _ = try AgentToolsCommand.parseAsRoot(["calendar", "authorize"]) }
+  }
+
+  /// Both roots expose noPrompt mode for both queries, defaulting to interactive.
+  @Test(arguments: [false, true])
+  func parsesNoPrompt(calendarOnly: Bool) throws {
+    let root: any ParsableCommand.Type = calendarOnly ? CalendarOnlyCommand.self : AgentToolsCommand.self
+    let events = try #require(root.parseAsRoot(["calendar", "events", "--no-prompt"]) as? CalendarEventsCommand)
+    let reminders = try #require(root.parseAsRoot(["calendar", "reminders", "--no-prompt"]) as? CalendarRemindersCommand)
+    #expect(events.noPrompt)
+    #expect(reminders.noPrompt)
+    #expect(try #require(root.parseAsRoot(["calendar", "events"]) as? CalendarEventsCommand).noPrompt == false)
+    #expect(try #require(root.parseAsRoot(["calendar", "reminders"]) as? CalendarRemindersCommand).noPrompt == false)
   }
 
   /// The normal root offers the calendar commands too, and rejects day counts over the limit.

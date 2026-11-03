@@ -8,7 +8,7 @@ enum CalendarAccess: Sendable, CustomStringConvertible {
   /// Full access was granted.
   case granted
 
-  /// The user has not been asked yet.
+  /// macOS reports no determined grant; an enclosing sandbox can also obscure an existing grant.
   case notDetermined
 
   /// The user refused access.

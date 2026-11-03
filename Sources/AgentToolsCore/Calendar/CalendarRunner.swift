@@ -21,6 +21,8 @@ enum CalendarRunner {
     let environment = ProcessInfo.processInfo.environment
     switch CalendarExecution.plan(selfResponsible: ResponsibleProcess.isSelfResponsible(), relaunched: environment[relaunchVariable] != nil) {
       case .query:
+        let parentWatch = environment[relaunchVariable] == nil ? nil : exitWhenParentExits()
+        defer { parentWatch?.cancel() }
         let settings = try await CalendarSettings.load(path: CalendarSettings.defaultPath(homeDirectory: .homeDirectory))
         let queries = CalendarQueries(store: EventKitCalendarStore(), settings: settings, report: CalendarReport(calendar: .current))
         for line in try await work(queries) {
@@ -41,5 +43,15 @@ enum CalendarRunner {
       case .disclaimFailed:
         throw ToolError("agt could not run as its own responsible process, so it will not read calendars or reminders.")
     }
+  }
+
+  /// Ends this process when the `agt` that relaunched it ends, so that a cancelled query cannot read or print later.
+  private static func exitWhenParentExits() -> any DispatchSourceProcess {
+    let parent = getppid()
+    let source = DispatchSource.makeProcessSource(identifier: parent, eventMask: .exit, queue: .global())
+    source.setEventHandler { exit(EXIT_FAILURE) }
+    source.resume()
+    if getppid() != parent { exit(EXIT_FAILURE) }
+    return source
   }
 }

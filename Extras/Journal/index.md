@@ -2,6 +2,10 @@
 
 - [2026-11-03](2026-11-03.md) — `agt prepare` resolves only product packages not excluded by name, matching validation; package discovery skips Git-ignored paths even when some files are tracked, so Bookish's `Extras/Legacy` packages drop out of both commands.
 
+- [2026-10-30 AgentTools 3.13.0](2026-10-30-release-3.13.0.md) — Release preparation for query permission requests, `--no-prompt`, request timeouts and link replacement; Agents #40 remains a separate merge.
+
+- [2026-10-30 Calendar Access Diagnostics](2026-10-30-calendar-access-diagnostics.md) — Automatic query permission requests with `--no-prompt`, removal of authorize, revised Decision 0007, and state-specific sandbox/service diagnostics.
+
 - [2026-10-29 AgentTools 3.12.0](2026-10-29-release-3.12.0.md) — Release preparation, validated code revision and the authorised merge/publish/Mint sequence; shared guidance rollout remains separate.
 
 - [2026-10-29 PR #8 Review Fixes](2026-10-29-pr8-review-fixes.md) — Lock placement and waiting plans, creator safety/recovery tests, shared settings, ignore checks and cross-plan preparation coverage; decision proposal awaits separate confirmation.

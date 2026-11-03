@@ -13,13 +13,12 @@ struct CalendarCommand: ParsableCommand {
     abstract: "List upcoming events and reminders.",
     discussion: """
       agt reads calendars as its own responsible process, so macOS grants the permission to agt and not to the \
-      terminal or app that runs it. Run `agt calendar authorize` once, and again after each agt update. Output is \
+      terminal or app that runs it. Queries request permission when needed; use --no-prompt to suppress requests. Output is \
       limited to times, titles, locations, and calendar or list names, one short line per item, for at most \
       \(CalendarWindow.maximumDays) days. To include only some calendars or reminder lists, name them under \
       `calendar.calendars` and `calendar.reminderLists` in ~/.agt/config.json.
       """,
     subcommands: [
-      CalendarAuthorizeCommand.self,
       CalendarEventsCommand.self,
       CalendarRemindersCommand.self,
     ]

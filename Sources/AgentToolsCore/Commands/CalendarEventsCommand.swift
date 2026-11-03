@@ -19,6 +19,10 @@ struct CalendarEventsCommand: AsyncParsableCommand {
   @Option(help: "Days to cover, starting today (1 to \(CalendarWindow.maximumDays)).")
   var days = 1
 
+  /// Suppresses requests for undecided macOS permission.
+  @Flag(help: "Do not request permission; fail if access has not already been granted.")
+  var noPrompt = false
+
   /// Rejects a day count outside the allowed range.
   func validate() throws {
     guard CalendarWindow.allowedDays.contains(days) else {
@@ -29,9 +33,10 @@ struct CalendarEventsCommand: AsyncParsableCommand {
   /// Prints the matching items.
   mutating func run() async throws {
     let days = days
+    let noPrompt = noPrompt
     try await CalendarRunner.run { queries in
       let window = try CalendarWindow(days: days, now: .now, calendar: .current)
-      return try await queries.events(in: window)
+      return try await queries.events(in: window, noPrompt: noPrompt)
     }
   }
 }
