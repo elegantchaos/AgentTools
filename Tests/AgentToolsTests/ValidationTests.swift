@@ -53,6 +53,28 @@ struct ValidationTests {
     #expect(!packages.contains(indexBuildPackageURL.path))
   }
 
+  /// Ignored directories are not part of the project, even when some of their files were committed regardless.
+  @Test func recursiveDiscoverySkipsGitIgnoredPackages() throws {
+    let repoURL = try makeTemporaryRepo()
+    defer { try? FileManager.default.removeItem(at: repoURL) }
+    try runGit(["init", "--quiet"], in: repoURL)
+    try "Extras/Legacy/\nScratch\n".write(to: repoURL.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+
+    try writePackage(at: repoURL)
+    let keptURL = repoURL.appendingPathComponent("Examples/Kept")
+    try writePackage(at: keptURL)
+    let trackedLegacyURL = repoURL.appendingPathComponent("Extras/Legacy/Old")
+    try writePackage(at: trackedLegacyURL)
+    try runGit(["add", "--force", "Extras/Legacy/Old/Package.swift"], in: repoURL)
+    let scratchURL = repoURL.appendingPathComponent("Scratch/Experiment")
+    try writePackage(at: scratchURL)
+
+    let packages = Set(ValidationDiscovery.packageDirectories(repoPath: repoURL.path, overrides: nil, recursive: true))
+
+    #expect(packages == [repoURL.path, keptURL.path])
+    #expect(Set(ValidationDiscovery.fingerprintFiles(repoPath: repoURL.path)) == ["Package.swift", "Examples/Kept/Package.swift"])
+  }
+
   @Test func packageDirOverridesCanIncludeFixturePackages() throws {
     let repoURL = try makeTemporaryRepo()
     defer { try? FileManager.default.removeItem(at: repoURL) }
@@ -320,6 +342,12 @@ struct ValidationTests {
       .appendingPathComponent("AgentTools-Validation-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+  }
+
+  /// Runs a git command in a directory, failing the test on a non-zero exit.
+  private func runGit(_ arguments: [String], in directory: URL) throws {
+    let result = try ValidationProcess(workingDirectory: directory.path).capture(["git"] + arguments)
+    #expect(result.status == 0, "\(result.stderr)")
   }
 
   /// Writes the smallest possible package manifest used by discovery tests.

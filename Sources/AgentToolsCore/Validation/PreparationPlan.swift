@@ -7,10 +7,12 @@ import Foundation
 
 /// Plans dependency materialisation in the directories used by targeted and full validation.
 enum PreparationPlan {
-  /// Resolves each discovered package for targeted SwiftPM runs, even when the product scheme covers its tests.
+  /// Resolves each product package for targeted SwiftPM runs, even when the product scheme covers its tests. Packages
+  /// outside the product, or excluded by name, are skipped, as validation skips them.
   /// Xcode resolution covers product schemes and the independent package containers full validation uses.
   static func steps(for project: ValidationProject, config: ValidationConfig, paths: ValidationPaths, sandbox: EnclosingSandbox) -> [PlannedStep] {
-    var steps = project.packages.map { package in
+    let resolved = project.packages.filter { $0.inProduct && !config.excludedPackages.contains($0.name) }
+    var steps = resolved.map { package in
       PlannedStep(
         title: "Resolve \(package.name) with SwiftPM", summary: "resolve \(package.name) (SwiftPM)",
         arguments: ValidationTool.swiftPMArguments(["package"], packageDir: package.directory, paths: paths, disableSandbox: config.swiftPMDisableSandbox || sandbox.isNested) + ["resolve"],

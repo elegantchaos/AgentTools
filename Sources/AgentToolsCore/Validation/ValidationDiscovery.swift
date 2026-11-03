@@ -52,7 +52,8 @@ enum ValidationDiscovery {
   /// Returns the package directories to validate.
   ///
   /// Explicit overrides are used as given. Otherwise the repository root and `Dependencies/Core` are
-  /// checked, followed by a recursive search that skips hidden directories, DerivedData, and test resources.
+  /// checked, followed by a recursive search that skips hidden directories, DerivedData, test resources, and
+  /// Git-ignored paths.
   static func packageDirectories(repoPath: String, overrides: [String]?, recursive: Bool) -> [String] {
     var ordered: [String] = []
     var seen = Set<String>()
@@ -74,10 +75,9 @@ enum ValidationDiscovery {
     addPackageDir("Dependencies/Core")
 
     guard recursive else { return ordered }
-    walk(repoPath) { relativePath, file in
-      if file.lastPathComponent == "Package.swift" {
-        addPackageDir(file.deletingLastPathComponent().path)
-      }
+    func isManifest(_ file: URL) -> Bool { file.lastPathComponent == "Package.swift" }
+    walk(repoPath, matching: isManifest) { _, file in
+      addPackageDir(file.deletingLastPathComponent().path)
     }
     return ordered
   }
@@ -143,20 +143,22 @@ enum ValidationDiscovery {
   /// manifests and resolved dependencies, Xcode workspaces and projects, and their shared and user schemes.
   static func fingerprintFiles(repoPath: String) -> [String] {
     var files: [String] = []
-    walk(repoPath) { relativePath, file in
+    func isDiscoveryInput(_ file: URL) -> Bool {
       let name = file.lastPathComponent
       let isManifest = name == "Package.swift" || name == "Package.resolved" || (name.hasPrefix("Package@swift-") && name.hasSuffix(".swift"))
       let isXcodeFile = name == "project.pbxproj" || name == "contents.xcworkspacedata" || name.hasSuffix(".xcscheme")
-      if isManifest || isXcodeFile {
-        files.append(relativePath)
-      }
+      return isManifest || isXcodeFile
+    }
+    walk(repoPath, matching: isDiscoveryInput) { relativePath, _ in
+      files.append(relativePath)
     }
     return files
   }
 
-  /// Visits every file in the repository with its repository-relative path, skipping hidden directories,
-  /// DerivedData, and test resources.
-  private static func walk(_ repoPath: String, visit: (String, URL) -> Void) {
+  /// Visits every relevant file in the repository with its repository-relative path, skipping hidden directories,
+  /// DerivedData, test resources, and paths that Git ignore rules match, even when Git tracks them.
+  private static func walk(_ repoPath: String, matching isRelevant: (URL) -> Bool, visit: (String, URL) -> Void) {
+    var found: [(String, URL)] = []
     func walk(_ directory: URL, relativePath: String) {
       guard let contents = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
       for child in contents {
@@ -166,12 +168,30 @@ enum ValidationDiscovery {
         }
         if isDirectory(child.path) {
           walk(child, relativePath: childPath)
-        } else {
-          visit(childPath, child)
+        } else if isRelevant(child) {
+          found.append((childPath, child))
         }
       }
     }
     walk(URL(fileURLWithPath: repoPath), relativePath: "")
+    let ignored = ignoredPaths(found.map(\.0), repoPath: repoPath)
+    for (relativePath, file) in found where !ignored.contains(relativePath) {
+      visit(relativePath, file)
+    }
+  }
+
+  /// Returns the repository-relative `paths` that the repository's Git ignore rules match, whether or not Git tracks
+  /// them. Outside a Git repository, or if Git fails, none are ignored.
+  static func ignoredPaths(_ paths: [String], repoPath: String) -> Set<String> {
+    let process = ValidationProcess(workingDirectory: repoPath)
+    var ignored = Set<String>()
+    // Paths go as arguments, in chunks well inside the command-line limit.
+    for start in stride(from: 0, to: paths.count, by: 200) {
+      let chunk = Array(paths[start..<min(start + 200, paths.count)])
+      guard let result = try? process.capture(["git", "check-ignore", "--no-index", "--"] + chunk), result.status == 0 else { continue }
+      ignored.formUnion(result.stdout.split(separator: "\n").map(String.init))
+    }
+    return ignored
   }
 
   /// Resolves an Xcode container from an override or by searching the repository root.
