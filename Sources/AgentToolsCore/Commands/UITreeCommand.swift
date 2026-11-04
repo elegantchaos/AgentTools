@@ -38,12 +38,14 @@ struct UITreeCommand: AsyncParsableCommand {
 
   /// Reads and prints the tree.
   mutating func run() async throws {
-    try UIPermission.accessibility.require()
-    let root = try SystemAccessibilityElement.application(processIdentifier: app.target.runningApplication().processIdentifier)
-    let menus = menus
-    let node = AccessibilityNode(root, depth: depth) { menus || $0.role != kAXMenuBarRole }
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    print(String(decoding: try encoder.encode(node), as: UTF8.self))
+    try await SelfResponsibleRunner.run(task: "read the accessibility tree") {
+      try UIPermission.accessibility.require()
+      let root = try SystemAccessibilityElement.application(processIdentifier: app.target.runningApplication().processIdentifier)
+      let menus = menus
+      let node = AccessibilityNode(root, depth: depth) { menus || $0.role != kAXMenuBarRole }
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+      print(String(decoding: try encoder.encode(node), as: UTF8.self))
+    }
   }
 }

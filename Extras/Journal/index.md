@@ -1,6 +1,6 @@
 # Development Journal
 
-- [2026-11-04 Driving a macOS GUI over ssh](2026-11-04-ui-driving.md) — `agt ui` commands; over ssh on macOS 27 TCC charges `/usr/libexec/sshd-keygen-wrapper` (not `sshd-session`, as first thought); ssh in as the console user; fixed inherited modifier flags and stale quit state.
+- [2026-11-04 Driving a macOS GUI over ssh](2026-11-04-ui-driving.md) — `agt ui` commands; commands needing permissions relaunch as their own responsible process so grants belong to `agt` (keyed on its code hash), after finding ssh grants land on `sshd-keygen-wrapper`; ssh in as the console user; fixed inherited modifier flags and stale quit state.
 
 - [2026-11-04 PR #10 Review](2026-11-04-pr10-review.md) — Copilot's findings: ignore checks for default packages, override manifests in the discovery fingerprint, and NUL-separated `check-ignore`; the submodule claim did not reproduce.
 

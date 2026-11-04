@@ -25,16 +25,18 @@ struct UIScreenshotCommand: AsyncParsableCommand {
 
   /// Captures and saves the image.
   mutating func run() async throws {
-    try UIPermission.screenRecording.require()
-    let capture =
-      if let application {
-        try await ScreenCapture.frontWindow(of: application.runningApplication().processIdentifier)
-      } else {
-        try await ScreenCapture.mainDisplay()
-      }
-    let url = URL(filePath: path)
-    try capture.writePNG(to: url)
-    let frame = capture.frame
-    print("Saved \(url.path): \(Int(frame.width))x\(Int(frame.height)) points at (\(Int(frame.minX)), \(Int(frame.minY))).")
+    try await SelfResponsibleRunner.run(task: "capture the screen") {
+      try UIPermission.screenRecording.require()
+      let capture =
+        if let application {
+          try await ScreenCapture.frontWindow(of: application.runningApplication().processIdentifier)
+        } else {
+          try await ScreenCapture.mainDisplay()
+        }
+      let url = URL(filePath: path)
+      try capture.writePNG(to: url)
+      let frame = capture.frame
+      print("Saved \(url.path): \(Int(frame.width))x\(Int(frame.height)) points at (\(Int(frame.minX)), \(Int(frame.minY))).")
+    }
   }
 }

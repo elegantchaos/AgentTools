@@ -20,7 +20,9 @@ struct UIKeyCommand: AsyncParsableCommand {
 
   /// Posts the key press.
   mutating func run() async throws {
-    try UIPermission.eventPosting.require()
-    try await EventSynthesizer().press(combo)
+    try await SelfResponsibleRunner.run(task: "post input events") {
+      try UIPermission.eventPosting.require()
+      try await EventSynthesizer().press(combo)
+    }
   }
 }

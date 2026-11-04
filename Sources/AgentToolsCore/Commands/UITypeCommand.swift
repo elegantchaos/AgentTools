@@ -20,7 +20,9 @@ struct UITypeCommand: AsyncParsableCommand {
 
   /// Posts the characters.
   mutating func run() async throws {
-    try UIPermission.eventPosting.require()
-    try await EventSynthesizer().type(text)
+    try await SelfResponsibleRunner.run(task: "post input events") {
+      try UIPermission.eventPosting.require()
+      try await EventSynthesizer().type(text)
+    }
   }
 }

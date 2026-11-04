@@ -32,7 +32,9 @@ struct UIScrollCommand: AsyncParsableCommand {
 
   /// Posts the scroll.
   mutating func run() async throws {
-    try UIPermission.eventPosting.require()
-    try await EventSynthesizer().scroll(at: CGPoint(x: x, y: y), down: down, right: right)
+    try await SelfResponsibleRunner.run(task: "post input events") {
+      try UIPermission.eventPosting.require()
+      try await EventSynthesizer().scroll(at: CGPoint(x: x, y: y), down: down, right: right)
+    }
   }
 }

@@ -40,7 +40,9 @@ struct UIDragCommand: AsyncParsableCommand {
 
   /// Posts the drag.
   mutating func run() async throws {
-    try UIPermission.eventPosting.require()
-    try await EventSynthesizer().drag(from: CGPoint(x: fromX, y: fromY), to: CGPoint(x: toX, y: toY), button: button, modifiers: modifiers)
+    try await SelfResponsibleRunner.run(task: "post input events") {
+      try UIPermission.eventPosting.require()
+      try await EventSynthesizer().drag(from: CGPoint(x: fromX, y: fromY), to: CGPoint(x: toX, y: toY), button: button, modifiers: modifiers)
+    }
   }
 }

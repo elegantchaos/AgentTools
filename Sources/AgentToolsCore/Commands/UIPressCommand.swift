@@ -36,13 +36,15 @@ struct UIPressCommand: AsyncParsableCommand {
 
   /// Finds and presses the element.
   mutating func run() async throws {
-    try UIPermission.accessibility.require()
-    let root = try SystemAccessibilityElement.application(processIdentifier: app.target.runningApplication().processIdentifier)
-    guard let element = query.firstMatch(in: root, maximumDepth: depth) else {
-      throw ToolError("No element within \(depth) levels has the title, identifier or description '\(text)'\(role.map { " and the role \($0)" } ?? "").")
+    try await SelfResponsibleRunner.run(task: "press an element") {
+      try UIPermission.accessibility.require()
+      let root = try SystemAccessibilityElement.application(processIdentifier: app.target.runningApplication().processIdentifier)
+      guard let element = query.firstMatch(in: root, maximumDepth: depth) else {
+        throw ToolError("No element within \(depth) levels has the title, identifier or description '\(text)'\(role.map { " and the role \($0)" } ?? "").")
+      }
+      try element.press()
+      let attributes = element.attributes
+      print("Pressed \(attributes.role ?? "element") '\(text)'.")
     }
-    try element.press()
-    let attributes = element.attributes
-    print("Pressed \(attributes.role ?? "element") '\(text)'.")
   }
 }

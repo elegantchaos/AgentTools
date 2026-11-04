@@ -15,22 +15,23 @@ struct UICommand: AsyncParsableCommand {
       Intended for a disposable test machine or VM, driven over ssh, never the machine you are using: these commands \
       move the real pointer and type into whatever is frontmost. A user must be logged in to the console. \
       Coordinates are screen points from the top left of the main display, as `tree` reports frames and as a \
-      display screenshot's pixels lie. macOS grants the permissions these commands need to the process responsible \
-      for agt: the terminal or app that started it, or /usr/libexec/sshd-keygen-wrapper over ssh. Grant Accessibility for \
-      tree, press and input events, and Screen Recording for screenshots; a command that lacks one says which \
-      process to allow.
+      display screenshot's pixels lie. These commands run agt as its own responsible process, so macOS asks for \
+      the permissions for agt itself, not for the terminal or ssh session that started it. Grant agt Accessibility \
+      for tree, press and input events, and Screen Recording for screenshots; a command that lacks one names the \
+      executable to allow. An ad-hoc signed build needs granting again after each rebuild.
       """,
-    subcommands: [
-      UIScreenshotCommand.self,
-      UITreeCommand.self,
-      UIPressCommand.self,
-      UIClickCommand.self,
-      UIDragCommand.self,
-      UIScrollCommand.self,
-      UITypeCommand.self,
-      UIKeyCommand.self,
-      UILaunchCommand.self,
-      UIQuitCommand.self,
-    ]
+    subcommands: permissionSubcommands + [UILaunchCommand.self, UIQuitCommand.self]
   )
+
+  /// The subcommands that need Accessibility or Screen Recording, and so run in a self-responsible `agt`.
+  static let permissionSubcommands: [any ParsableCommand.Type] = [
+    UIScreenshotCommand.self,
+    UITreeCommand.self,
+    UIPressCommand.self,
+    UIClickCommand.self,
+    UIDragCommand.self,
+    UIScrollCommand.self,
+    UITypeCommand.self,
+    UIKeyCommand.self,
+  ]
 }

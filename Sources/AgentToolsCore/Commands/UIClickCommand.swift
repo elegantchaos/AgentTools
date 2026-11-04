@@ -46,7 +46,9 @@ struct UIClickCommand: AsyncParsableCommand {
 
   /// Posts the click.
   mutating func run() async throws {
-    try UIPermission.eventPosting.require()
-    try await EventSynthesizer().click(at: point, button: button, count: count, modifiers: modifiers)
+    try await SelfResponsibleRunner.run(task: "post input events") {
+      try UIPermission.eventPosting.require()
+      try await EventSynthesizer().click(at: point, button: button, count: count, modifiers: modifiers)
+    }
   }
 }
