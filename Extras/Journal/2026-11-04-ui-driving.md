@@ -28,3 +28,7 @@ In the VM over ssh as `tester`, with Accessibility granted to `sshd-session`: `l
 
 - A decision record for "`agt ui` runs under its caller's responsibility, intended for disposable machines" is proposed but not written; it needs Sam's confirmation.
 - Remote lldb into the VM is a later stretch goal.
+
+## Follow-up: The Grant Belongs to `sshd-keygen-wrapper`
+
+The first finding above was wrong. With Screen Recording switched on for `sshd-session` in System Settings, captures were still refused. tccd's log for the request named `responsible_path=/usr/libexec/sshd-keygen-wrapper, binary_path=/usr/libexec/sshd-session`, and the system TCC database held Accessibility for `sshd-keygen-wrapper`, which worked, and Screen Recording for `sshd-session`, which tccd never consults. `sshd-keygen-wrapper` execs `sshd-session` in the same process. TCC keeps the executable the responsible process started as, while `responsibility_get_pid_responsible_for_pid` plus `proc_pidpath` report its current image. The permission error now maps `sshd-session` to `sshd-keygen-wrapper`, and the README names the wrapper. `sudo log show` with a `tccd` predicate is the reliable way to see which identity TCC is checking.
