@@ -48,3 +48,7 @@ With Accessibility also granted to `/Users/tester/agt`, and the `sshd-keygen-wra
 ## Follow-up: Intermittent Lock Test
 
 Full validation of b83ea03 failed twice in a row on `RepositoryOperationLockTests.ownershipIsExclusiveAndReleased`, which this branch does not touch, with "Cannot acquire the preparation/validation lock; held by validation". A full run on a clean checkout of `origin/main` passed, and a third full run of b83ea03, with nothing else running, passed too. The test is intermittent, and the cause was not found. Signing `agt` with a stable identity, so grants survive rebuilds, was tried and then dropped at Sam's request, because Mint installs could not be signed that way; grants stay tied to each build's code hash.
+
+## Follow-up: Decision 0007 Rewritten
+
+With Sam's approval, [0007](../Decisions/0007-agt-holds-its-own-privacy-permissions.md) is now titled "`agt` Holds Its Own Privacy Permissions". It is rewritten to cover `agt ui` as well as calendars: the restricted root's scope, the exclusion of `launch` and `quit`, `sshd-keygen-wrapper` as the rejected alternative over ssh, and stable signing kept for later because Mint builds can't be signed that way. Calendar-specific rules moved into their own Details section. This settles the decision record left open above.
