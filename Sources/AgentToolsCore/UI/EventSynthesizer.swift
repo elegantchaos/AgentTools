@@ -21,16 +21,19 @@ struct EventSynthesizer {
   /// Moves the pointer to `point` and clicks `button` `count` times, holding `modifiers`.
   func click(at point: CGPoint, button: MouseButton, count: Int, modifiers: ModifierKeys) async throws {
     try await move(to: point)
+    try post(modifiers.pressStrokes)
     for click in 1...count {
       try post(mouse: button.downType, at: point, button: button, clickState: click, modifiers: modifiers)
       try post(mouse: button.upType, at: point, button: button, clickState: click, modifiers: modifiers)
       try await Task.sleep(for: Self.pause)
     }
+    try post(modifiers.releaseStrokes)
   }
 
   /// Presses `button` at `start`, moves to `end` in small steps, and releases it there, holding `modifiers`.
   func drag(from start: CGPoint, to end: CGPoint, button: MouseButton, modifiers: ModifierKeys) async throws {
     try await move(to: start)
+    try post(modifiers.pressStrokes)
     try post(mouse: button.downType, at: start, button: button, clickState: 1, modifiers: modifiers)
     for step in 1...Self.dragSteps {
       let fraction = Double(step) / Double(Self.dragSteps)
@@ -40,6 +43,7 @@ struct EventSynthesizer {
     }
     try await Task.sleep(for: Self.pause)
     try post(mouse: button.upType, at: end, button: button, clickState: 1, modifiers: modifiers)
+    try post(modifiers.releaseStrokes)
   }
 
   /// Moves the pointer to `point` and scrolls by the given points; positive values scroll down and right.
@@ -49,11 +53,9 @@ struct EventSynthesizer {
     try post(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: -down, wheel2: -right, wheel3: 0), modifiers: [])
   }
 
-  /// Presses and releases a key, holding its modifiers.
+  /// Presses a key combination: its modifiers go down, the key goes down and up, then the modifiers come up.
   func press(_ combo: KeyCombo) async throws {
-    for isDown in [true, false] {
-      try post(CGEvent(keyboardEventSource: nil, virtualKey: combo.keyCode, keyDown: isDown), modifiers: combo.modifiers)
-    }
+    try post(combo.keystrokes)
     try await Task.sleep(for: Self.pause)
   }
 
@@ -87,6 +89,13 @@ extension EventSynthesizer {
     let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button.cgButton)
     event?.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
     try post(event, modifiers: modifiers)
+  }
+
+  /// Posts each keyboard event in `strokes`, in order, with the modifiers it records as held.
+  private func post(_ strokes: [KeyStroke]) throws {
+    for stroke in strokes {
+      try post(CGEvent(keyboardEventSource: nil, virtualKey: stroke.keyCode, keyDown: stroke.isDown), modifiers: stroke.modifiers)
+    }
   }
 
   /// Posts `event` with exactly `modifiers` held, or throws when it could not be created.

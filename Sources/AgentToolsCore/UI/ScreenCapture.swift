@@ -58,6 +58,8 @@ extension ScreenCapture {
     let configuration = SCStreamConfiguration()
     configuration.width = Int(frame.width)
     configuration.height = Int(frame.height)
+    // A window's shadow lies outside its frame; leaving it out keeps one pixel per point from the frame's origin.
+    configuration.ignoreShadowsSingleWindow = true
     let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
     return ScreenCapture(image: image, frame: frame)
   }

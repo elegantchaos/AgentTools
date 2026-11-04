@@ -3,6 +3,7 @@
 //  Copyright © 2026 Elegant Chaos Limited. All rights reserved.
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+import Carbon.HIToolbox
 import CoreGraphics
 
 /// The modifier keys held during a synthesised key press or mouse event, parsed from text such as `cmd+shift`.
@@ -53,6 +54,26 @@ struct ModifierKeys: OptionSet, Hashable {
     return flags
   }
 
+  /// Key events that press these modifiers one at a time, each carrying the modifiers held so far.
+  var pressStrokes: [KeyStroke] {
+    var held: ModifierKeys = []
+    return Self.keys.compactMap { modifier, key in
+      guard contains(modifier) else { return nil }
+      held.insert(modifier)
+      return KeyStroke(keyCode: key, isDown: true, modifiers: held)
+    }
+  }
+
+  /// Key events that release these modifiers in the reverse order of `pressStrokes`, each carrying those still held.
+  var releaseStrokes: [KeyStroke] {
+    var held = self
+    return Self.keys.reversed().compactMap { modifier, key in
+      guard contains(modifier) else { return nil }
+      held.remove(modifier)
+      return KeyStroke(keyCode: key, isDown: false, modifiers: held)
+    }
+  }
+
   /// Splits `text` at each `+`, rejecting it when it or any component is empty.
   static func components(of text: String) throws(KeyParseError) -> [Substring] {
     let components = text.split(separator: "+", omittingEmptySubsequences: false)
@@ -62,6 +83,15 @@ struct ModifierKeys: OptionSet, Hashable {
 }
 
 extension ModifierKeys {
+  /// Each modifier and the left-hand key that produces it, in the order they are pressed.
+  private static let keys: [(ModifierKeys, CGKeyCode)] = [
+    (.command, CGKeyCode(kVK_Command)),
+    (.shift, CGKeyCode(kVK_Shift)),
+    (.option, CGKeyCode(kVK_Option)),
+    (.control, CGKeyCode(kVK_Control)),
+    (.function, CGKeyCode(kVK_Function)),
+  ]
+
   /// Modifier names and their aliases, in lower case.
   private static let byName: [String: ModifierKeys] = [
     "cmd": .command, "command": .command,

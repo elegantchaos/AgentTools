@@ -30,6 +30,11 @@ struct UIScrollCommand: AsyncParsableCommand {
   @Option(parsing: .unconditional, help: "Points to scroll right; negative values scroll left.")
   var right: Int32 = 0
 
+  /// Rejects the one distance whose negation, needed for the wheel event, overflows.
+  func validate() throws {
+    guard down != .min, right != .min else { throw ValidationError("--down and --right must be greater than \(Int32.min).") }
+  }
+
   /// Posts the scroll.
   mutating func run() async throws {
     try await SelfResponsibleRunner.run(task: "post input events") {

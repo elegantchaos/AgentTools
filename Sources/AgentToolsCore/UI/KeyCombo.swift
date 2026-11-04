@@ -37,6 +37,17 @@ struct KeyCombo: Equatable {
 }
 
 extension KeyCombo {
+  /// The whole gesture: press the modifiers, press and release the key, then release the modifiers.
+  ///
+  /// Releasing the modifiers matters for shortcuts that complete on release, such as `cmd+tab`.
+  var keystrokes: [KeyStroke] {
+    modifiers.pressStrokes
+      + [KeyStroke(keyCode: keyCode, isDown: true, modifiers: modifiers), KeyStroke(keyCode: keyCode, isDown: false, modifiers: modifiers)]
+      + modifiers.releaseStrokes
+  }
+}
+
+extension KeyCombo {
   /// Key names, in lower case, and their virtual key codes on a US ANSI keyboard.
   private static let keyCodes: [String: Int] = [
     "a": kVK_ANSI_A, "b": kVK_ANSI_B, "c": kVK_ANSI_C, "d": kVK_ANSI_D, "e": kVK_ANSI_E, "f": kVK_ANSI_F, "g": kVK_ANSI_G,

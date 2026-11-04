@@ -30,6 +30,15 @@ struct UICommandParsingTests {
     #expect(throws: (any Error).self) { try UIClickCommand.parse(arguments) }
   }
 
+  /// Scroll distances accept negative values, but not the one whose negation overflows.
+  @Test func scrollRejectsUnnegatableDistances() throws {
+    let scroll = try UIScrollCommand.parse(["1", "2", "--down", "-120", "--right", "40"])
+    #expect(scroll.down == -120)
+    #expect(scroll.right == 40)
+    #expect(throws: (any Error).self) { try UIScrollCommand.parse(["1", "2", "--down", "\(Int32.min)"]) }
+    #expect(throws: (any Error).self) { try UIScrollCommand.parse(["1", "2", "--right", "\(Int32.min)"]) }
+  }
+
   /// A key command parses its combination when the command line is parsed.
   @Test func keyParsesItsCombo() throws {
     let command = try UIKeyCommand.parse(["cmd+n"])

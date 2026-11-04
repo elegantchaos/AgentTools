@@ -56,6 +56,29 @@ struct KeyComboTests {
     #expect(throws: error) { try KeyCombo(parsing: text) }
   }
 
+  /// A combination presses its modifiers, then the key, then releases the modifiers in reverse, so nothing stays held.
+  @Test func keystrokesPressAndReleaseModifiersAroundTheKey() throws {
+    let combo = try KeyCombo(parsing: "shift+cmd+n")
+    let n = CGKeyCode(kVK_ANSI_N)
+    #expect(
+      combo.keystrokes == [
+        KeyStroke(keyCode: CGKeyCode(kVK_Command), isDown: true, modifiers: [.command]),
+        KeyStroke(keyCode: CGKeyCode(kVK_Shift), isDown: true, modifiers: [.command, .shift]),
+        KeyStroke(keyCode: n, isDown: true, modifiers: [.command, .shift]),
+        KeyStroke(keyCode: n, isDown: false, modifiers: [.command, .shift]),
+        KeyStroke(keyCode: CGKeyCode(kVK_Shift), isDown: false, modifiers: [.command]),
+        KeyStroke(keyCode: CGKeyCode(kVK_Command), isDown: false, modifiers: []),
+      ])
+  }
+
+  /// Every modifier has a key to press, and an unmodified key is just a press and a release.
+  @Test func everyModifierHasAKeyAndPlainKeysNeedNoModifierEvents() throws {
+    let all: ModifierKeys = [.command, .shift, .option, .control, .function]
+    #expect(all.pressStrokes.map(\.keyCode) == [kVK_Command, kVK_Shift, kVK_Option, kVK_Control, kVK_Function].map { CGKeyCode($0) })
+    #expect(all.releaseStrokes.last?.modifiers == [])
+    #expect(try KeyCombo(parsing: "return").keystrokes.count == 2)
+  }
+
   /// Modifier sets parse on their own for mouse commands, and translate to event flags.
   @Test func modifierKeysParseAndProduceEventFlags() throws {
     let modifiers = try ModifierKeys(parsing: "cmd+shift")
