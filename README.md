@@ -121,6 +121,7 @@ Drive a macOS login session from the command line: capture the screen, post mous
 agt ui launch ./Bookish.app -- -someLaunchArgument
 agt ui tree --app com.elegantchaos.Bookish --depth 8
 agt ui press "Add Book" --role AXButton
+agt ui press link-entry.authors
 agt ui click 530 598 --count 2 --modifiers shift
 agt ui drag 300 598 600 598
 agt ui scroll 530 598 --down 200
@@ -130,7 +131,7 @@ agt ui screenshot ~/shot.png --app com.elegantchaos.Bookish
 agt ui quit com.elegantchaos.Bookish
 ```
 
-`tree` prints JSON: each element's role, subrole, title, value, identifier, description, enabled state and frame, where it has them, then its children. Elements cut off by `--depth`, and the menu bar unless `--menus` is given, report `omittedChildren` instead. `press` searches breadth first, menus included, for an exact title, identifier or description, optionally narrowed by `--role`, and performs the element's press action without moving the pointer. `--app` takes a bundle identifier or process identifier and defaults to the frontmost application.
+`tree` prints JSON: each element's role, subrole, title, value, identifier, description, enabled state and frame, where it has them, then its children. Elements cut off by `--depth`, and the menu bar unless `--menus` is given, report `omittedChildren` instead. `press` searches breadth first, menus included, for an exact title, identifier or description, optionally narrowed by `--role`, and performs the element's press action without moving the pointer. An element with no press action that can take keyboard focus, such as a text or search field, is focused instead, so that a following `type` goes to it. If the field refuses focus, `press` clicks the centre of its visible part, and fails with the field's frame when it is scrolled out of view. `--app` takes a bundle identifier or process identifier and defaults to the frontmost application.
 
 Coordinates are screen points from the top left of the main display. Element frames use the same coordinates, and a display screenshot has one pixel per point, so either gives a point to click directly. A window screenshot reports its origin, to add to its pixel positions. `key` names keys on a US keyboard, joined with modifiers by `+`: `cmd`, `shift`, `option`, `control` and `fn`, then a letter, digit, punctuation mark or a name such as `return`, `escape`, `tab`, `space`, `delete`, `left` or `f1`. `type` sends each character as itself, whatever the layout, and presses Return for newlines. The receiving app still applies its own autocorrection and capitalisation. Every event carries exactly the modifiers its command asks for.
 

@@ -10,8 +10,13 @@ struct UIPressCommand: AsyncParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "press",
-    abstract: "Press an element by its exact title, identifier or description.",
-    discussion: "Searches breadth first, menus included, and presses the match nearest the application element, without moving the pointer."
+    abstract: "Press an element, or focus a field, by its exact title, identifier or description.",
+    discussion: """
+      Searches breadth first, menus included, and presses the match nearest the application element, without moving \
+      the pointer. An element with no press action that can take focus, such as a text or search field, is focused \
+      instead, so that type goes to it. If the field refuses focus, it is clicked in the centre of its visible part; \
+      a field scrolled out of view is an error.
+      """
   )
 
   /// The text to match.
@@ -42,9 +47,24 @@ struct UIPressCommand: AsyncParsableCommand {
       guard let element = query.firstMatch(in: root, maximumDepth: depth) else {
         throw ToolError("No element within \(depth) levels has the title, identifier or description '\(text)'\(role.map { " and the role \($0)" } ?? "").")
       }
-      try element.press()
-      let attributes = element.attributes
-      print("Pressed \(attributes.role ?? "element") '\(text)'.")
+      let role = element.attributes.role ?? "element"
+      switch ElementActivation.choose(actions: element.actions, canFocus: element.canFocus) {
+        case .press:
+          try element.press()
+          print("Pressed \(role) '\(text)'.")
+        case .focus:
+          if element.focus() {
+            print("Focused \(role) '\(text)'.")
+            return
+          }
+          let point = try ElementActivation.clickPoint(frame: element.frame, clips: element.clips)
+          try UIPermission.eventPosting.require()
+          try await EventSynthesizer().click(at: point, button: .left, count: 1, modifiers: [])
+          guard element.isFocused else {
+            throw ToolError("\(role) '\(text)' refused focus, and clicking it at (\(Int(point.x)), \(Int(point.y))) did not focus it either.")
+          }
+          print("Focused \(role) '\(text)' by clicking it at (\(Int(point.x)), \(Int(point.y))).")
+      }
     }
   }
 }

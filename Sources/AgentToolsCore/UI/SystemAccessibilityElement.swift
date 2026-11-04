@@ -48,6 +48,42 @@ struct SystemAccessibilityElement: AccessibilityElement {
     return element
   }
 
+  /// The names of the actions the element supports, such as `AXPress`.
+  var actions: [String] {
+    var names: CFArray?
+    guard AXUIElementCopyActionNames(element, &names) == .success else { return [] }
+    return names as? [String] ?? []
+  }
+
+  /// Whether the element can be given keyboard focus.
+  var canFocus: Bool {
+    var settable: DarwinBoolean = false
+    return AXUIElementIsAttributeSettable(element, kAXFocusedAttribute as CFString, &settable) == .success && settable.boolValue
+  }
+
+  /// Whether the element has keyboard focus.
+  var isFocused: Bool {
+    value(kAXFocusedAttribute) as? Bool ?? false
+  }
+
+  /// The frames that clip what is visible of the element: its window's and those of the scroll areas around it.
+  var clips: [CGRect] {
+    var frames: [CGRect] = []
+    var ancestor = parent
+    while let current = ancestor {
+      if ["AXScrollArea", "AXWindow"].contains(current.string(kAXRoleAttribute)), let frame = current.frame {
+        frames.append(frame)
+      }
+      ancestor = current.parent
+    }
+    return frames
+  }
+
+  /// Gives the element keyboard focus, returning whether it then reports having it.
+  func focus() -> Bool {
+    AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success && isFocused
+  }
+
   /// Performs the element's press action, as a click on it would.
   func press() throws {
     let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
@@ -68,13 +104,20 @@ extension SystemAccessibilityElement {
   }
 
   /// The frame in screen points, from the position and size attributes.
-  private var frame: CGRect? {
+  var frame: CGRect? {
     var origin = CGPoint.zero
     var size = CGSize.zero
     guard let position = axValue(kAXPositionAttribute), AXValueGetValue(position, .cgPoint, &origin), let extent = axValue(kAXSizeAttribute), AXValueGetValue(extent, .cgSize, &size) else {
       return nil
     }
     return CGRect(origin: origin, size: size)
+  }
+
+  /// The element's parent, or `nil` at the top of the hierarchy.
+  private var parent: SystemAccessibilityElement? {
+    guard let raw = value(kAXParentAttribute), CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+    // The type ID check above makes this cast safe; conditional casts to CF types always succeed.
+    return SystemAccessibilityElement(element: unsafeDowncast(raw, to: AXUIElement.self))
   }
 
   /// Returns the attribute's value, or `nil` when the element does not have it.

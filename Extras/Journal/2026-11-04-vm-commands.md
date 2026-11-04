@@ -29,3 +29,13 @@ Not exercised for real: `--window`, which would open a window on Sam's screen, a
 ## Follow-up: Decision 0011
 
 With Sam's approval, [0011](../Decisions/0011-agt-vm-only-touches-its-own-clones.md) records that `agt vm` only stops, deletes or drives `agt-` clones, never the base image, and that tart stays an external subprocess. This settles the decision record left open above.
+
+## Follow-up: `press` Focuses Text Fields
+
+Testing this branch against Bookish, another session found that `agt ui press link-entry.authors` failed on a SwiftUI text field with AXError -25206, since the field has no press action. Focus stayed in the title field, so the next `type` appended the author to the title. Sam asked for a fix before release.
+
+`press` now chooses how to activate what it finds. An element with an `AXPress` action is pressed as before. One without it whose `AXFocused` attribute is settable is focused, and `press` reads the attribute back to check. If focus is refused, it clicks the centre of the element's frame clipped to its window and enclosing scroll areas, and fails with the frame when none of it is visible, instead of clicking somewhere else. Anything else is still offered the press action, so its refusal is reported as before. This extends `press` instead of adding a `focus` command: pressing is what an agent naturally tries on a field, as that session did, and the element's own actions decide what happens, so nothing has to be learnt. The output says "Focused" or "Pressed", so the caller can tell which happened. `agt vm ui` passes `press` through unchanged.
+
+The choice between pressing and focusing, and the click point with its visibility check, are unit tested. Both failed against stubs first.
+
+In a clone of `golden-gate` running Leaves.app from Bookish, built with `agt validate --target Bookish`, the guest's own granted `agt` reproduced the failure: after `press "New Book"` and `type`, `press link-entry.authors` failed with -25206. The new build, shared to the clone, needs its own Device Control and Data Access grant, because grants follow the code hash ([0007](../Decisions/0007-agt-holds-its-own-privacy-permissions.md)). Without one, it refused with the path to allow.
