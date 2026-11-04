@@ -23,7 +23,7 @@ agt <command>
 
 Show the installed version with `agt --version`.
 
-`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure`, `agt calendar` and `agt ui` run anywhere.
+`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure`, `agt calendar` and `agt ui` run anywhere. `agt vm` reads its settings from the repository it runs in, when there is one, and otherwise from your own configuration.
 
 ### Refresh
 
@@ -135,6 +135,43 @@ agt ui quit com.elegantchaos.Bookish
 Coordinates are screen points from the top left of the main display. Element frames use the same coordinates, and a display screenshot has one pixel per point, so either gives a point to click directly. A window screenshot reports its origin, to add to its pixel positions. `key` names keys on a US keyboard, joined with modifiers by `+`: `cmd`, `shift`, `option`, `control` and `fn`, then a letter, digit, punctuation mark or a name such as `return`, `escape`, `tab`, `space`, `delete`, `left` or `f1`. `type` sends each character as itself, whatever the layout, and presses Return for newlines. The receiving app still applies its own autocorrection and capitalisation. Every event carries exactly the modifiers its command asks for.
 
 Like `agt calendar`, the commands that need a permission run a second `agt` as its own responsible process, so macOS asks for the permission for `agt` itself, not for the terminal or ssh session that started it. Granting `agt` therefore gives nothing to other commands run over ssh. In System Settings > Privacy & Security, add the `agt` executable under Device Control and Data Access (called Accessibility before macOS 27) for `tree`, `press` and input events, and under Screen & System Audio Recording for `screenshot`. A command that lacks a permission fails before doing anything and names the executable to allow. The grant is tied to that build's code signature, so a rebuilt `agt` needs granting again, while copying the same build over itself keeps it. `launch` and `quit` need no permission. `quit` waits up to ten seconds for the application to exit; a save sheet or other dialog keeps it open, and `--force` kills it.
+
+### VM
+
+Run a macOS app in a throwaway [tart](https://tart.run) clone and drive it from the host with `agt ui`, without touching the Mac you are using. The clone is made from a base image that auto-logs in a test user, has Remote Login on, and has an `agt` granted Device Control and Data Access and Screen Recording, as described under UI. Clones copy the base image's disk, so they inherit those grants.
+
+```shell
+agt vm start --build
+agt vm launch Bookish.app -- -someLaunchArgument
+agt vm ui tree --app com.elegantchaos.Bookish --depth 8
+agt vm ui press "Add Book" --role AXButton
+agt vm ui screenshot shot.png --app com.elegantchaos.Bookish
+agt vm stop
+```
+
+`start` clones the base image, boots the clone headless, or with a window to watch when given `--window`, and shares a host folder with it read-only. It returns once the guest user owns the console and Finder is running, printing the clone's name and address. The share defaults to validation's Debug build products, where `agt validate` and `--build` put them; `--share` names another folder. `--build` first builds the scheme for macOS, as `agt validate --target <scheme>` does. If the clone does not become ready, it is deleted, and the error names tart's log.
+
+`launch` opens an app as the guest user, from a path relative to the share or an absolute guest path. `ui` passes everything after its own options to the guest's `agt ui` and exits with its status. A screenshot's path is a host path: the guest writes a temporary file, which is copied back and deleted. `stop` stops the clone and deletes it, or with `--keep` leaves it stopped. `list` shows the clones and their states.
+
+Clone names start with `agt-`. When only one clone is running, `launch`, `ui` and `stop` use it; otherwise pass `--name`. `agt vm` never stops, deletes or drives the base image, or any VM whose name lacks the prefix.
+
+Settings come from the `vm` key of the project's `.agt/local/config.json` and `.agt/config.json`, then your `~/.agt/config.json`; the first file that sets a value wins. Put machine-specific values in your own file and project values in the project's:
+
+```json
+{
+  "vm": {
+    "baseImage": "golden-gate",
+    "guestUser": "tester",
+    "sshKey": "~/.tart/ssh/id_ed25519",
+    "knownHosts": "~/.tart/ssh/known_hosts",
+    "guestAgt": "/usr/local/bin/agt",
+    "scheme": "Bookish",
+    "share": ".build/agt/DerivedData/Build/Products/Debug"
+  }
+}
+```
+
+These are the defaults, except `scheme`, which defaults to the first of `validate.schemes`. Relative paths are relative to the repository, and `~` to your home. ssh and scp use only the configured key and known hosts file, never `~/.ssh`, in batch mode. Clones share the base image's host key but can reuse each other's addresses, so `start` forgets any key recorded for the new clone's address in that file, and the clone's key is accepted on first contact. An agent's sandbox blocks tart and ssh to the clone, so run `agt vm` outside it.
 
 ### Format and Validate
 

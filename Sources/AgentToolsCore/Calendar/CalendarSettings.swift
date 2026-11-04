@@ -19,24 +19,12 @@ struct CalendarSettings: Equatable {
 
   /// Returns the path of the user's configuration file in `homeDirectory`.
   static func defaultPath(homeDirectory: URL) -> String {
-    homeDirectory.appending(path: ".agt/config.json").path
+    ConfigurationFiles.userPath(homeDirectory: homeDirectory)
   }
 
   /// Loads the settings from the file at `path`; a missing file includes everything.
   static func load(path: String) async throws -> CalendarSettings {
-    let fileConfig = ConfigReader(
-      provider: InMemoryProvider(values: [
-        AbsoluteConfigKey(["filePath"]): ConfigValue(.string(path), isSecret: false),
-        AbsoluteConfigKey(["allowMissing"]): ConfigValue(.bool(true), isSecret: false),
-      ])
-    )
-    let provider: FileProvider<JSONSnapshot>
-    do {
-      provider = try await FileProvider<JSONSnapshot>(config: fileConfig)
-    } catch {
-      throw ToolError("Invalid configuration file \(path): \(error)")
-    }
-    let config = ConfigReader(provider: provider)
+    let config = try await ConfigurationFiles.reader(paths: [path])
     return CalendarSettings(
       calendars: config.stringArray(forKey: "calendar.calendars"),
       reminderLists: config.stringArray(forKey: "calendar.reminderLists")
