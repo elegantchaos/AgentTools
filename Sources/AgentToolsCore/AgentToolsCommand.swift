@@ -24,6 +24,7 @@ public struct AgentToolsCommand: AsyncParsableCommand {
       Sandbox.self,
       Skills.self,
       UICommand.self,
+      VMCommand.self,
       ValidateCommand.self,
       WorktreeCommand.self,
     ]

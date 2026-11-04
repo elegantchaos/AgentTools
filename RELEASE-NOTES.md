@@ -1,5 +1,17 @@
 # Release Notes
 
+## 3.15.0
+
+- Adds `agt vm` for running a macOS app in a throwaway [tart](https://tart.run) clone and driving it from the host. `start` clones the base image, boots it with a host folder shared read-only and waits for the guest user's session; `--build` builds the scheme first and `--window` shows the VM. `launch` opens an app from the share, `ui` runs the guest's `agt ui` with screenshots copied back to host paths, `stop` deletes the clone (or `--keep`s it stopped), and `list` shows clones.
+- `agt vm` only stops, deletes or drives clones it named (`agt-` prefix), never the configured base image. Settings live under the `vm` key of `.agt/local/config.json`, `.agt/config.json` and `~/.agt/config.json`. ssh uses only the configured key and tart's own known hosts file, never `~/.ssh`.
+- `agt ui press` now focuses an element with no press action that can take focus, such as a SwiftUI text field, and brings its application to the front, so a following `type` goes to it. If focus is refused, it clicks the centre of the element's visible part, and fails with the element's frame when it is scrolled out of view.
+
+## 3.14.0
+
+- Adds `agt ui` for driving a macOS login session over ssh on a disposable test machine: `screenshot`, `tree`, `press`, `click`, `drag`, `scroll`, `type`, `key`, `launch` and `quit`. `tree` prints the accessibility hierarchy as JSON with frames in screen points, and `press` finds an element by exact title, identifier or description.
+- The `ui` commands that need Device Control and Data Access (formerly Accessibility) or Screen Recording run `agt` as its own responsible process, so the grants belong to `agt` itself and not to everything run over ssh. A missing permission fails before acting and names the executable to allow.
+- `agt prepare` resolves only product packages that are not excluded by name, matching validation, and package discovery skips paths that Git ignore rules match, even when some of their files are tracked.
+
 ## 3.13.0
 
 - `agt calendar events` and `agt calendar reminders` now request their own permission when macOS reports it as undetermined, and continue the query once approved. This removes `agt calendar authorize`.

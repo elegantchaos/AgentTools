@@ -18,6 +18,8 @@ struct ValidationPaths {
   var logRoot: String { "\(root)/logs" }
   /// Private DerivedData directory for Xcode validation.
   var derivedDataPath: String { "\(root)/DerivedData" }
+  /// Products of macOS Debug builds in `derivedDataPath`, which is what validation builds.
+  var debugProductsPath: String { "\(derivedDataPath)/Build/Products/Debug" }
   /// State and output of background validation.
   var backgroundDirectory: String { "\(root)/background" }
   /// Advisory lock and diagnostic metadata, preserved through cleaning.

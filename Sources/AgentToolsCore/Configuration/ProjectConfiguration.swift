@@ -41,22 +41,7 @@ struct ProjectConfiguration {
 
   /// Loads the configuration for a repository; missing files count as empty.
   static func load(repoPath: String) async throws -> ProjectConfiguration {
-    var providers: [any ConfigProvider] = []
-    for path in files(repoPath: repoPath) {
-      let fileConfig = ConfigReader(
-        provider: InMemoryProvider(values: [
-          AbsoluteConfigKey(["filePath"]): ConfigValue(.string(path), isSecret: false),
-          AbsoluteConfigKey(["allowMissing"]): ConfigValue(.bool(true), isSecret: false),
-        ])
-      )
-      do {
-        providers.append(try await FileProvider<JSONSnapshot>(config: fileConfig))
-      } catch {
-        throw ToolError("Invalid configuration file \(path): \(error)")
-      }
-    }
-
-    let config = ConfigReader(providers: providers)
+    let config = try await ConfigurationFiles.reader(paths: files(repoPath: repoPath))
     return ProjectConfiguration(
       validate: ValidateFileSettings(
         schemes: config.stringArray(forKey: "validate.schemes"),
