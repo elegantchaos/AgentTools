@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-04 AgentTools 3.15.0](2026-11-04-release-3.15.0.md) — Release of `agt vm` and `press` focusing text fields from PR #12; the guest's `agt` needs the new build and fresh grants for focusing.
+
 - [2026-11-04 Running Apps in Throwaway tart Clones](2026-11-04-vm-commands.md) — `agt vm start|launch|ui|stop|list`: clone the base image, share build products read-only, wait for the console session, pass `agt ui` through ssh with screenshots copied to the host; only `agt-` clones are ever removed, never the base image ([0011](../Decisions/0011-agt-vm-only-touches-its-own-clones.md)).
 
 - [2026-11-04 Driving a macOS GUI over ssh](2026-11-04-ui-driving.md) — `agt ui` commands; commands needing permissions relaunch as their own responsible process so grants belong to `agt` (keyed on its code hash), after finding ssh grants land on `sshd-keygen-wrapper`; ssh in as the console user; fixed inherited modifier flags and stale quit state.
