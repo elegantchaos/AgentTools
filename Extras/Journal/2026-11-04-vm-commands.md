@@ -25,3 +25,7 @@ Not exercised for real: `--window`, which would open a window on Sam's screen, a
 
 - A decision record is proposed but not written, pending Sam's confirmation: `agt vm` only stops, deletes or drives VMs it named (`agt-` prefix), never the configured base image, and runs tart as an external tool.
 - Remote lldb into a clone remains a later stretch goal.
+
+## Follow-up: Decision 0011
+
+With Sam's approval, [0011](../Decisions/0011-agt-vm-only-touches-its-own-clones.md) records that `agt vm` only stops, deletes or drives `agt-` clones, never the base image, and that tart stays an external subprocess. This settles the decision record left open above.
