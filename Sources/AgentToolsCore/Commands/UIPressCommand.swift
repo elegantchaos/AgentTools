@@ -14,7 +14,7 @@ struct UIPressCommand: AsyncParsableCommand {
     discussion: """
       Searches breadth first, menus included, and presses the match nearest the application element, without moving \
       the pointer. An element with no press action that can take focus, such as a text or search field, is focused \
-      instead, so that type goes to it. If the field refuses focus, it is clicked in the centre of its visible part; \
+      instead, and its application brought to the front, so that type goes to it. If the field refuses focus, it is clicked in the centre of its visible part; \
       a field scrolled out of view is an error.
       """
   )
@@ -53,6 +53,8 @@ struct UIPressCommand: AsyncParsableCommand {
           try element.press()
           print("Pressed \(role) '\(text)'.")
         case .focus:
+          // Focus is per application, and typing goes to the active one.
+          try root.activateApplication()
           if element.focus() {
             print("Focused \(role) '\(text)'.")
             return

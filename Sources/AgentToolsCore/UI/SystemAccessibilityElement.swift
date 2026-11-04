@@ -79,6 +79,14 @@ struct SystemAccessibilityElement: AccessibilityElement {
     return frames
   }
 
+  /// Makes this application element's application the active one, so that typing goes to it.
+  func activateApplication() throws {
+    let result = AXUIElementSetAttributeValue(element, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    guard result == .success else {
+      throw ToolError("The application could not be brought to the front (AXError \(result.rawValue)).")
+    }
+  }
+
   /// Gives the element keyboard focus, returning whether it then reports having it.
   func focus() -> Bool {
     AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success && isFocused
