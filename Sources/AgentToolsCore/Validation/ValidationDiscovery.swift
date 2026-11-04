@@ -51,8 +51,9 @@ enum ValidationDiscovery {
 
   /// Returns the package directories to validate.
   ///
-  /// Explicit overrides are used as given. Otherwise the repository root and `Dependencies/Core` are
-  /// checked, followed by a recursive search that skips hidden directories, DerivedData, and test resources.
+  /// Explicit overrides are used as given, even when Git ignores them. Otherwise the repository root and
+  /// `Dependencies/Core` are checked, followed by a recursive search that skips hidden directories, DerivedData, and
+  /// test resources. Packages whose manifests Git ignore rules match are skipped in both.
   static func packageDirectories(repoPath: String, overrides: [String]?, recursive: Bool) -> [String] {
     var ordered: [String] = []
     var seen = Set<String>()
@@ -70,14 +71,16 @@ enum ValidationDiscovery {
       return ordered
     }
 
-    addPackageDir(repoPath)
-    addPackageDir("Dependencies/Core")
+    let defaults = [(manifest: "Package.swift", directory: repoPath), (manifest: "Dependencies/Core/Package.swift", directory: "Dependencies/Core")]
+    let ignoredDefaults = ignoredPaths(defaults.map(\.manifest), repoPath: repoPath)
+    for (manifest, directory) in defaults where !ignoredDefaults.contains(manifest) {
+      addPackageDir(directory)
+    }
 
     guard recursive else { return ordered }
-    walk(repoPath) { relativePath, file in
-      if file.lastPathComponent == "Package.swift" {
-        addPackageDir(file.deletingLastPathComponent().path)
-      }
+    func isManifest(_ file: URL) -> Bool { file.lastPathComponent == "Package.swift" }
+    walk(repoPath, matching: isManifest) { _, file in
+      addPackageDir(file.deletingLastPathComponent().path)
     }
     return ordered
   }
@@ -139,24 +142,42 @@ enum ValidationDiscovery {
     }
   }
 
-  /// Returns the repository-relative paths of the files whose contents determine discovery's results: package
-  /// manifests and resolved dependencies, Xcode workspaces and projects, and their shared and user schemes.
-  static func fingerprintFiles(repoPath: String) -> [String] {
-    var files: [String] = []
-    walk(repoPath) { relativePath, file in
+  /// Returns the paths of the files whose contents determine discovery's results: package manifests and resolved
+  /// dependencies, Xcode workspaces and projects, and their shared and user schemes.
+  ///
+  /// Paths are repository-relative, except for the manifests of `overrides` outside the repository, which are
+  /// absolute. Overridden packages' manifests are included even when Git ignores them, because discovery uses them.
+  static func fingerprintFiles(repoPath: String, overrides: [String]? = nil) -> [String] {
+    func isManifest(_ name: String) -> Bool {
+      name == "Package.swift" || name == "Package.resolved" || (name.hasPrefix("Package@swift-") && name.hasSuffix(".swift"))
+    }
+    func isDiscoveryInput(_ file: URL) -> Bool {
       let name = file.lastPathComponent
-      let isManifest = name == "Package.swift" || name == "Package.resolved" || (name.hasPrefix("Package@swift-") && name.hasSuffix(".swift"))
-      let isXcodeFile = name == "project.pbxproj" || name == "contents.xcworkspacedata" || name.hasSuffix(".xcscheme")
-      if isManifest || isXcodeFile {
-        files.append(relativePath)
+      return isManifest(name) || name == "project.pbxproj" || name == "contents.xcworkspacedata" || name.hasSuffix(".xcscheme")
+    }
+    var files: [String] = []
+    walk(repoPath, matching: isDiscoveryInput) { relativePath, _ in
+      files.append(relativePath)
+    }
+    let repo = ValidationPaths.canonical(repoPath)
+    for directory in overrides ?? [] {
+      let resolved = resolvePath(directory, repoPath: repoPath)
+      let names = (try? FileManager.default.contentsOfDirectory(atPath: resolved)) ?? []
+      for name in names where isManifest(name) {
+        let path = ValidationPaths.canonical("\(resolved)/\(name)")
+        let file = path.hasPrefix("\(repo)/") ? String(path.dropFirst(repo.count + 1)) : path
+        if !files.contains(file) {
+          files.append(file)
+        }
       }
     }
     return files
   }
 
-  /// Visits every file in the repository with its repository-relative path, skipping hidden directories,
-  /// DerivedData, and test resources.
-  private static func walk(_ repoPath: String, visit: (String, URL) -> Void) {
+  /// Visits every relevant file in the repository with its repository-relative path, skipping hidden directories,
+  /// DerivedData, test resources, and paths that Git ignore rules match, even when Git tracks them.
+  private static func walk(_ repoPath: String, matching isRelevant: (URL) -> Bool, visit: (String, URL) -> Void) {
+    var found: [(String, URL)] = []
     func walk(_ directory: URL, relativePath: String) {
       guard let contents = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
       for child in contents {
@@ -166,12 +187,30 @@ enum ValidationDiscovery {
         }
         if isDirectory(child.path) {
           walk(child, relativePath: childPath)
-        } else {
-          visit(childPath, child)
+        } else if isRelevant(child) {
+          found.append((childPath, child))
         }
       }
     }
     walk(URL(fileURLWithPath: repoPath), relativePath: "")
+    let ignored = ignoredPaths(found.map(\.0), repoPath: repoPath)
+    for (relativePath, file) in found where !ignored.contains(relativePath) {
+      visit(relativePath, file)
+    }
+  }
+
+  /// Returns the repository-relative `paths` that the repository's Git ignore rules match, whether or not Git tracks
+  /// them. Outside a Git repository, or if Git fails, none are ignored.
+  ///
+  /// Paths are exchanged NUL-separated, so Git does not quote unusual names. Without the index, Git also checks paths
+  /// inside submodules against the repository's own rules instead of rejecting them.
+  static func ignoredPaths(_ paths: [String], repoPath: String) -> Set<String> {
+    guard !paths.isEmpty else { return [] }
+    let input = Data(paths.map { "\($0)\0" }.joined().utf8)
+    guard let result = try? ValidationProcess(workingDirectory: repoPath).capture(["git", "check-ignore", "--no-index", "--stdin", "-z"], input: input),
+      result.status == 0
+    else { return [] }
+    return Set(result.stdout.split(separator: "\0").map(String.init))
   }
 
   /// Resolves an Xcode container from an override or by searching the repository root.

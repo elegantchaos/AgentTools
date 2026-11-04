@@ -53,6 +53,39 @@ struct ValidationTests {
     #expect(!packages.contains(indexBuildPackageURL.path))
   }
 
+  /// Ignored directories are not part of the project, even when some of their files were committed regardless.
+  @Test func recursiveDiscoverySkipsGitIgnoredPackages() throws {
+    let repoURL = try makeTemporaryRepo()
+    defer { try? FileManager.default.removeItem(at: repoURL) }
+    try runGit(["init", "--quiet"], in: repoURL)
+    // Git's default, which quotes non-ASCII names unless output is NUL-separated.
+    try runGit(["config", "core.quotePath", "true"], in: repoURL)
+    try "Extras/Legacy/\nScratch\nDependencies/Core/\n".write(to: repoURL.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+
+    try writePackage(at: repoURL)
+    let keptURL = repoURL.appendingPathComponent("Examples/Kept")
+    try writePackage(at: keptURL)
+    let trackedLegacyURL = repoURL.appendingPathComponent("Extras/Legacy/Old")
+    try writePackage(at: trackedLegacyURL)
+    try runGit(["add", "--force", "Extras/Legacy/Old/Package.swift"], in: repoURL)
+    try writePackage(at: repoURL.appendingPathComponent("Extras/Legacy/Ünïcode"))
+    try writePackage(at: repoURL.appendingPathComponent("Scratch/Experiment"))
+    try writePackage(at: repoURL.appendingPathComponent("Dependencies/Core"))
+    // A submodule's paths must not stop the rest of the batch being checked.
+    let submoduleURL = repoURL.appendingPathComponent("Dependencies/Sub")
+    try writePackage(at: submoduleURL)
+    try runGit(["update-index", "--add", "--cacheinfo", "160000,4b825dc642cb6eb9a060e54bf8d69288fbee4904,Dependencies/Sub"], in: repoURL)
+
+    let packages = Set(ValidationDiscovery.packageDirectories(repoPath: repoURL.path, overrides: nil, recursive: true))
+    #expect(packages == [repoURL.path, keptURL.path, submoduleURL.path])
+    #expect(ValidationDiscovery.packageDirectories(repoPath: repoURL.path, overrides: nil, recursive: false) == [repoURL.path])
+    #expect(Set(ValidationDiscovery.fingerprintFiles(repoPath: repoURL.path)) == ["Package.swift", "Examples/Kept/Package.swift", "Dependencies/Sub/Package.swift"])
+
+    // An explicit override is used as given, and its manifest still invalidates the discovery cache.
+    #expect(ValidationDiscovery.packageDirectories(repoPath: repoURL.path, overrides: ["Extras/Legacy/Old"], recursive: true) == [trackedLegacyURL.path])
+    #expect(ValidationDiscovery.fingerprintFiles(repoPath: repoURL.path, overrides: ["Extras/Legacy/Old"]).contains("Extras/Legacy/Old/Package.swift"))
+  }
+
   @Test func packageDirOverridesCanIncludeFixturePackages() throws {
     let repoURL = try makeTemporaryRepo()
     defer { try? FileManager.default.removeItem(at: repoURL) }
@@ -320,6 +353,12 @@ struct ValidationTests {
       .appendingPathComponent("AgentTools-Validation-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
+  }
+
+  /// Runs a git command in a directory, failing the test on a non-zero exit.
+  private func runGit(_ arguments: [String], in directory: URL) throws {
+    let result = try ValidationProcess(workingDirectory: directory.path).capture(["git"] + arguments)
+    #expect(result.status == 0, "\(result.stderr)")
   }
 
   /// Writes the smallest possible package manifest used by discovery tests.

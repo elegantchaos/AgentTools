@@ -638,7 +638,9 @@ final class ValidationTool {
     ]
     return DiscoveryCache(
       path: "\(paths.root)/discovery.json",
-      fingerprint: DiscoveryCache.fingerprint(root: repoPath, files: ValidationDiscovery.fingerprintFiles(repoPath: repoPath), inputs: inputs)
+      fingerprint: DiscoveryCache.fingerprint(
+        root: repoPath, files: ValidationDiscovery.fingerprintFiles(repoPath: repoPath, overrides: config.packageDirsOverride), inputs: inputs
+      )
     )
   }
 

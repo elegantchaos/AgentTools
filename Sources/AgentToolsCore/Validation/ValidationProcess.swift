@@ -11,10 +11,18 @@ struct ValidationProcess {
   let workingDirectory: String
 
   /// Runs a command to completion and captures its separate output streams, adding `environment` to the inherited one.
-  func capture(_ arguments: [String], environment: [String: String] = [:]) throws -> CommandResult {
+  /// `input`, when given, is the command's standard input. It is read from a temporary file rather than a pipe, so a
+  /// command that exits without reading it cannot raise SIGPIPE here.
+  func capture(_ arguments: [String], environment: [String: String] = [:], input: Data? = nil) throws -> CommandResult {
     let process = makeProcess(arguments)
     if !environment.isEmpty {
       process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+    }
+    let inputURL = input.map { _ in FileManager.default.temporaryDirectory.appendingPathComponent("agt-input-\(UUID().uuidString)") }
+    defer { inputURL.map { try? FileManager.default.removeItem(at: $0) } }
+    if let input, let inputURL {
+      try input.write(to: inputURL)
+      process.standardInput = try FileHandle(forReadingFrom: inputURL)
     }
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()

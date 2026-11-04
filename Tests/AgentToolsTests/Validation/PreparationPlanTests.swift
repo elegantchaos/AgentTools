@@ -46,6 +46,19 @@ struct PreparationPlanTests {
     #expect(steps[0].arguments.last == "resolve")
   }
 
+  /// Packages validation never uses, such as legacy copies outside the product or ones excluded by name, are not resolved.
+  @Test func packagesOutsideValidationAreNotResolved() throws {
+    var legacy = LocalPackage(directory: "/repo/Extras/Legacy/Old", name: "Old", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false)
+    legacy.inProduct = false
+    let excluded = LocalPackage(directory: "/repo/Excluded", name: "Excluded", hasTests: true, scheme: nil, submodule: nil, submoduleChanged: false)
+    var file = ValidateFileSettings()
+    file.excludePackages = ["Excluded"]
+    let config = try ValidateCommand.parse([]).config(repoPath: "/repo", file: file)
+    let project = ValidationProject(container: [], productSchemes: ["Core"], schemesWithTests: [], buildPlatforms: [.macOS], testPlatforms: [.macOS], testDestinations: [:], packages: [localPackage(), legacy, excluded])
+    let steps = PreparationPlan.steps(for: project, config: config, paths: ValidationPaths(repoPath: "/repo"), sandbox: EnclosingSandbox(isNested: false))
+    #expect(steps.map(\.title) == ["Resolve Core with SwiftPM"])
+  }
+
   /// Every Xcode execution context in full validation must have a matching resolution step.
   @Test(arguments: [true, false], [true, false])
   func preparationCoversEveryValidationContext(hasContainer: Bool, simulatorTests: Bool) throws {
