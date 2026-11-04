@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-04 PR #10 Review](2026-11-04-pr10-review.md) — Copilot's findings: ignore checks for default packages, override manifests in the discovery fingerprint, and NUL-separated `check-ignore`; the submodule claim did not reproduce.
+
 - [2026-11-03](2026-11-03.md) — `agt prepare` resolves only product packages not excluded by name, matching validation; package discovery skips Git-ignored paths even when some files are tracked, so Bookish's `Extras/Legacy` packages drop out of both commands.
 
 - [2026-10-30 AgentTools 3.13.0](2026-10-30-release-3.13.0.md) — Release preparation for query permission requests, `--no-prompt`, request timeouts and link replacement; Agents #40 remains a separate merge.

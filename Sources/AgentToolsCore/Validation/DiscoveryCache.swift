@@ -38,13 +38,14 @@ final class DiscoveryCache {
     contents = saved?.fingerprint == fingerprint ? saved! : Contents(fingerprint: fingerprint, entries: [:])
   }
 
-  /// Returns a fingerprint of the names and contents of `files`, relative to `root`, and the other `inputs`,
+  /// Returns a fingerprint of the names and contents of `files`, relative to `root` unless absolute, and the other `inputs`,
   /// independent of file order.
   static func fingerprint(root: String, files: [String], inputs: [String]) -> String {
     var hasher = SHA256()
     for file in files.sorted() {
       hasher.update(data: Data(file.utf8))
-      hasher.update(data: Data(SHA256.hash(data: (try? Data(contentsOf: URL(fileURLWithPath: "\(root)/\(file)"))) ?? Data())))
+      let path = file.hasPrefix("/") ? file : "\(root)/\(file)"
+      hasher.update(data: Data(SHA256.hash(data: (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data())))
     }
     for input in inputs {
       hasher.update(data: Data(input.utf8))
