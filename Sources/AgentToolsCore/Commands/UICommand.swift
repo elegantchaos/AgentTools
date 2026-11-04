@@ -16,7 +16,7 @@ struct UICommand: AsyncParsableCommand {
       move the real pointer and type into whatever is frontmost. A user must be logged in to the console. \
       Coordinates are screen points from the top left of the main display, as `tree` reports frames and as a \
       display screenshot's pixels lie. These commands run agt as its own responsible process, so macOS asks for \
-      the permissions for agt itself, not for the terminal or ssh session that started it. Grant agt Accessibility \
+      the permissions for agt itself, not for the terminal or ssh session that started it. Grant agt Device Control and Data Access (formerly Accessibility) \
       for tree, press and input events, and Screen Recording for screenshots; a command that lacks one names the \
       executable to allow. An ad-hoc signed build needs granting again after each rebuild.
       """,

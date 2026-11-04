@@ -16,7 +16,7 @@ enum UIPermission {
   /// Reading and acting on other applications' accessibility elements.
   case accessibility
 
-  /// Posting synthetic mouse and keyboard events. System Settings lists it under Accessibility.
+  /// Posting synthetic mouse and keyboard events. System Settings grants it under Device Control and Data Access, called Accessibility before macOS 27.
   case eventPosting
 
   /// Capturing the screen.
@@ -44,8 +44,8 @@ enum UIPermission {
   /// The permission's name in messages.
   private var name: String {
     switch self {
-      case .accessibility: "Accessibility"
-      case .eventPosting: "Accessibility (to post events)"
+      case .accessibility: "Device Control and Data Access (formerly Accessibility)"
+      case .eventPosting: "Device Control and Data Access (formerly Accessibility) to post events"
       case .screenRecording: "Screen Recording"
     }
   }
@@ -53,7 +53,7 @@ enum UIPermission {
   /// The System Settings list that grants the permission.
   private var settingsPane: String {
     switch self {
-      case .accessibility, .eventPosting: "Accessibility"
+      case .accessibility, .eventPosting: "Device Control and Data Access"
       case .screenRecording: "Screen & System Audio Recording"
     }
   }
