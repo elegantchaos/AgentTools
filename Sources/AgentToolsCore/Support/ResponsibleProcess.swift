@@ -19,6 +19,15 @@ enum ResponsibleProcess {
     return responsible == processID
   }
 
+  /// Returns the executable path of the process responsible for this one, which holds its privacy permissions, or
+  /// `nil` when the lookup is unavailable.
+  static func responsibleExecutablePath() -> String? {
+    guard let responsible = lookupResponsiblePID(getpid()) else { return nil }
+    var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+    guard proc_pidpath(responsible, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+    return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+  }
+
   /// Runs `executable` with `arguments` and `environment` as its own responsible process, sharing this process's
   /// standard streams, and returns its exit status once it finishes.
   ///

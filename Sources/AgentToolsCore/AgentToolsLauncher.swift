@@ -7,8 +7,8 @@ import ArgumentParser
 
 /// Chooses the root command for the `agt` executable and runs it.
 ///
-/// When `agt` is its own responsible process it may hold the calendar permission, so it accepts only the calendar
-/// commands. Otherwise it accepts every command.
+/// When `agt` is its own responsible process it may hold the permissions granted to `agt` itself, so it accepts only
+/// the commands that need them. Otherwise it accepts every command.
 public enum AgentToolsLauncher {
   /// Parses the command line with the appropriate root command and runs it.
   public static func main() async {
@@ -17,7 +17,7 @@ public enum AgentToolsLauncher {
 
   /// Returns the root command for a process that is, is not, or might be (`nil`) its own responsible process.
   static func rootCommand(selfResponsible: Bool?) -> any AsyncParsableCommand.Type {
-    selfResponsible == true ? CalendarOnlyCommand.self : AgentToolsCommand.self
+    selfResponsible == true ? SelfResponsibleCommand.self : AgentToolsCommand.self
   }
 
   /// Runs the root command `command`.
