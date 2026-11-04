@@ -23,7 +23,7 @@ agt <command>
 
 Show the installed version with `agt --version`.
 
-`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure` and `agt calendar` run anywhere.
+`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure`, `agt calendar` and `agt ui` run anywhere.
 
 ### Refresh
 
@@ -112,6 +112,29 @@ To include only some calendars or reminder lists, name them in `~/.agt/config.js
 ```
 
 This filters out calendars you do not want reported, such as subscriptions. It is not a security boundary, since anything running as you can edit the file.
+
+### UI
+
+Drive a macOS login session from the command line: capture the screen, post mouse and keyboard input, and read or press elements through the accessibility tree. It is meant for a disposable test machine or VM driven over ssh, never for the Mac you are using, because it moves the real pointer and types into whatever is frontmost. A user must be logged in to the console, and ssh must log in as that user.
+
+```shell
+agt ui launch ./Bookish.app -- -someLaunchArgument
+agt ui tree --app com.elegantchaos.Bookish --depth 8
+agt ui press "Add Book" --role AXButton
+agt ui click 530 598 --count 2 --modifiers shift
+agt ui drag 300 598 600 598
+agt ui scroll 530 598 --down 200
+agt ui type "Dune"
+agt ui key cmd+n
+agt ui screenshot ~/shot.png --app com.elegantchaos.Bookish
+agt ui quit com.elegantchaos.Bookish
+```
+
+`tree` prints JSON: each element's role, subrole, title, value, identifier, description, enabled state and frame, where it has them, then its children. Elements cut off by `--depth`, and the menu bar unless `--menus` is given, report `omittedChildren` instead. `press` searches breadth first, menus included, for an exact title, identifier or description, optionally narrowed by `--role`, and performs the element's press action without moving the pointer. `--app` takes a bundle identifier or process identifier and defaults to the frontmost application.
+
+Coordinates are screen points from the top left of the main display. Element frames use the same coordinates, and a display screenshot has one pixel per point, so either gives a point to click directly. A window screenshot reports its origin, to add to its pixel positions. `key` names keys on a US keyboard, joined with modifiers by `+`: `cmd`, `shift`, `option`, `control` and `fn`, then a letter, digit, punctuation mark or a name such as `return`, `escape`, `tab`, `space`, `delete`, `left` or `f1`. `type` sends each character as itself, whatever the layout, and presses Return for newlines. Every event carries exactly the modifiers its command asks for.
+
+macOS grants the needed permissions to the process responsible for `agt`. Over ssh that is `/usr/libexec/sshd-session`; from a terminal, it is the terminal. In System Settings > Privacy & Security, allow it under Accessibility for `tree`, `press` and input events, and under Screen & System Audio Recording for `screenshot`. A command that lacks a permission fails before doing anything and names the process to allow. Granting `sshd-session` covers every command run over ssh on that machine, which is why these commands belong on a disposable one. `launch` and `quit` need no permission. `quit` waits up to ten seconds for the application to exit; a save sheet or other dialog keeps it open, and `--force` kills it.
 
 ### Format and Validate
 

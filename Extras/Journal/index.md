@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-04 Driving a macOS GUI over ssh](2026-11-04-ui-driving.md) — `agt ui` commands; over ssh on macOS 27 TCC charges `/usr/libexec/sshd-session`; ssh in as the console user; fixed inherited modifier flags and stale quit state.
+
 - [2026-11-04 PR #10 Review](2026-11-04-pr10-review.md) — Copilot's findings: ignore checks for default packages, override manifests in the discovery fingerprint, and NUL-separated `check-ignore`; the submodule claim did not reproduce.
 
 - [2026-11-03](2026-11-03.md) — `agt prepare` resolves only product packages not excluded by name, matching validation; package discovery skips Git-ignored paths even when some files are tracked, so Bookish's `Extras/Legacy` packages drop out of both commands.
