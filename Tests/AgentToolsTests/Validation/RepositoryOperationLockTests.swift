@@ -10,6 +10,23 @@ import Testing
 
 /// Verifies that validation and preparation cannot concurrently own dependency directories.
 struct RepositoryOperationLockTests {
+  /// Exercises ownership turnover while other test cases launch real subprocesses.
+  @Test(arguments: 0..<8)
+  func repeatedOwnershipReleaseDuringProcessLaunch(worker: Int) throws {
+    for iteration in 0..<100 {
+      let process = Process()
+      process.executableURL = URL(filePath: "/usr/bin/true")
+      try process.run()
+      defer { process.waitUntilExit() }
+      do {
+        try ownershipIsExclusiveAndReleased()
+      } catch {
+        Issue.record("Worker \(worker), iteration \(iteration): \(error)")
+        return
+      }
+    }
+  }
+
   /// Planning reports the owner, waits for release, and replaces the diagnostic metadata only after acquisition.
   @Test func planningWaitsForTheNamedBackgroundOwner() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -39,8 +56,10 @@ struct RepositoryOperationLockTests {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
       .appendingPathComponent(".build/tmp/lock-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }
+    weak let releasedOwner: RepositoryOperationLock?
     do {
       let lock = try RepositoryOperationLock(repoPath: root.path)
+      releasedOwner = lock
       defer { withExtendedLifetime(lock) {} }
       #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(".build/agt/lock").path))
       #expect(throws: ToolError.self) {
@@ -51,7 +70,12 @@ struct RepositoryOperationLockTests {
         _ = try RepositoryOperationLock(repoPath: root.path)
       }
     }
-    let next = try RepositoryOperationLock(repoPath: root.path)
-    withExtendedLifetime(next) {}
+    try #require(releasedOwner == nil)
+    do {
+      let next = try RepositoryOperationLock(repoPath: root.path)
+      withExtendedLifetime(next) {}
+    } catch {
+      throw ToolError("Reacquiring after the owner's deinit: \(error)")
+    }
   }
 }
