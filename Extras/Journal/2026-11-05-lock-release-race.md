@@ -19,3 +19,7 @@ The CLI-created worktree could not be attached through Codex's managed-worktree 
 ## Outside-Sandbox Follow-Up
 
 Sam explicitly approved running `agt validate --target AgentToolsCore` outside the sandbox. That run passed the build and all 219 tests in 32 suites, including all 800 lock-turnover iterations and the previously blocked process-group test. This verifies the complete targeted suite in debug with Swift 6.4.2; release-mode CI, macOS 26 and comprehensive validation remain unrun. No further source changes were needed.
+
+## PR Preparation
+
+Rebased onto `e5d3db3` from current main before publishing; the only conflict was the journal index, and both sets of entries were retained. Formatting/lint and `git diff --check` passed. The approved outside-sandbox `agt validate --target AgentToolsCore` run passed all 275 tests in 43 suites on code commit `1836949`, including the 800 stress iterations. Release-mode and macOS 26 checks remain for CI, and comprehensive local validation remains unrun.
