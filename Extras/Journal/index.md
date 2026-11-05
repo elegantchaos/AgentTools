@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-05 Lock Release Race](2026-11-05-lock-release-race.md) — Reproduced checkout-lock contention after owner deallocation during parallel process launches; explicit unlocking passes 800 stress iterations and all 219 targeted tests in an approved outside-sandbox run.
+
 - [2026-11-04 AgentTools 3.15.0](2026-11-04-release-3.15.0.md) — Release of `agt vm` and `press` focusing text fields from PR #12; the guest's `agt` needs the new build and fresh grants for focusing.
 
 - [2026-11-04 Running Apps in Throwaway tart Clones](2026-11-04-vm-commands.md) — `agt vm start|launch|ui|stop|list`: clone the base image, share build products read-only, wait for the console session, pass `agt ui` through ssh with screenshots copied to the host; only `agt-` clones are ever removed, never the base image ([0011](../Decisions/0011-agt-vm-only-touches-its-own-clones.md)).

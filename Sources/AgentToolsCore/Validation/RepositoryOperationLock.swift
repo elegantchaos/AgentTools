@@ -8,8 +8,9 @@ import Foundation
 
 /// Holds an advisory lock while preparation or validation owns a checkout's build directories.
 /// Cleaning preserves the lock file's inode, so another process cannot acquire a replacement lock.
+/// Ownership ends with an explicit unlock, even if a concurrent process launch still references the open file.
 final class RepositoryOperationLock {
-  /// Descriptor whose lifetime owns the exclusive lock.
+  /// Descriptor used to acquire and explicitly release checkout ownership.
   private let descriptor: Int32
 
   /// Acquires exclusive ownership, optionally waiting for a running operation without replacing it.
@@ -38,6 +39,7 @@ final class RepositoryOperationLock {
       try handle.seek(toOffset: 0)
       try handle.write(contentsOf: JSONEncoder().encode(owner))
     } catch {
+      flock(descriptor, LOCK_UN)
       close(descriptor)
       throw error
     }
@@ -46,6 +48,7 @@ final class RepositoryOperationLock {
 
   /// Releases the lock even when an operation fails.
   deinit {
+    flock(descriptor, LOCK_UN)
     close(descriptor)
   }
 }
