@@ -5,18 +5,17 @@
 
 import Foundation
 
-/// Starts and stops background full validation.
+/// Starts and stops background committed validation.
 ///
 /// A background validation runs `agt` itself as a detached worker process, with its output going to a log file. Each
 /// worker holds a token recorded in the status file. A newer validation replaces the token, and the worker, which checks
 /// it about twice a second, interrupts its current tool and exits. The worker leads its own process group, so if it has
 /// not exited after a grace period it can be killed together with the tools it runs.
 enum BackgroundLauncher {
-  /// Options that select something other than full validation, and are dropped from the worker's arguments.
-  private static let droppedFlags: Set<String> = ["--fast", "--background", "--status", "--wait", "--plan", "--background-worker"]
+  /// Control options that apply only to the launcher.
+  private static let droppedFlags: Set<String> = ["--background", "--status", "--wait", "--plan", "--background-worker"]
 
-  /// Returns the arguments for the worker: the command's own arguments, without options that select something other
-  /// than full validation, followed by `--background-worker`.
+  /// Returns the arguments for the worker: the command's own scope and selection options, followed by `--background-worker`.
   static func workerArguments(from arguments: [String]) -> [String] {
     var result: [String] = []
     var skipNext = false
@@ -32,6 +31,9 @@ enum BackgroundLauncher {
     return result + ["--background-worker"]
   }
 
+  /// Environment variable containing the pinned request.
+  static let snapshotVariable = "AGT_VALIDATION_SNAPSHOT"
+
   /// Environment variable that passes a worker its token.
   static let tokenVariable = "AGT_BACKGROUND_TOKEN"
 
@@ -39,12 +41,13 @@ enum BackgroundLauncher {
   private static let gracePeriod: TimeInterval = 30
 
   /// Starts a worker in `repoPath`, recording it as running.
-  static func start(repoPath: String, fingerprint: String, store: BackgroundStatusStore) throws -> BackgroundStatus {
+  static func start(repoPath: String, snapshot: ValidationSnapshot, store: BackgroundStatusStore) throws -> BackgroundStatus {
     guard let executable = Bundle.main.executableURL else {
       throw ToolError("Cannot find the agt executable to start background validation.")
     }
+    let encoded = try JSONEncoder().encode(snapshot).base64EncodedString()
     let token = UUID().uuidString
-    var status = BackgroundStatus(state: .running, pid: 0, fingerprint: fingerprint, started: .now, token: token)
+    var status = BackgroundStatus(state: .running, pid: 0, commit: snapshot.commit, started: .now, token: token, full: snapshot.config.full)
     try store.save(status)
 
     FileManager.default.createFile(atPath: store.logPath, contents: nil)
@@ -53,12 +56,19 @@ enum BackgroundLauncher {
     worker.executableURL = executable
     worker.arguments = workerArguments(from: Array(CommandLine.arguments.dropFirst()))
     worker.currentDirectoryURL = URL(fileURLWithPath: repoPath)
-    worker.environment = ProcessInfo.processInfo.environment.merging([tokenVariable: token]) { _, new in new }
+    worker.environment = ProcessInfo.processInfo.environment.merging([tokenVariable: token, snapshotVariable: encoded]) { _, new in new }
     worker.standardInput = FileHandle.nullDevice
     worker.standardOutput = log
     worker.standardError = log
-    try worker.run()
-    try? log.close()
+    defer { try? log.close() }
+    do {
+      try worker.run()
+    } catch {
+      status.state = .failed
+      status.finished = .now
+      try? store.save(status)
+      throw error
+    }
 
     status.pid = worker.processIdentifier
     if store.load()?.isOwned(byToken: token) ?? false {

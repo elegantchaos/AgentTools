@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-24
+- Revised: 2026-11-06
 
 ## Context
 
@@ -9,7 +10,9 @@ Validation runs after every change, and its full phase is planned to run in the 
 
 ## Decision
 
-`agt validate` never modifies the project's source or any other tracked or user-owned file. It writes only its own outputs: build products, logs, and caches, in directories it owns. Commands that change source, such as formatting, are separate commands.
+`agt validate` protects the development worktree's source, tracked files, and other user-owned files. Targeted validation reads the development worktree and writes build products, logs, and caches to directories it owns. Commands that edit project files, such as formatting, are separate commands.
+
+Change-scoped and full validation build a pinned commit in an AgentTools-owned validation worktree. AgentTools may reset tracked files and update submodules there to materialise the requested commit. The development worktree and its branch are untouched.
 
 ## Alternatives
 

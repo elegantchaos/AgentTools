@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// The state of a background full validation, and the working tree it checked.
+/// The state and tested commit of a background validation.
 struct BackgroundStatus: Codable, Equatable {
   /// Where a background validation has got to.
   enum State: String, Codable {
@@ -15,8 +15,6 @@ struct BackgroundStatus: Codable, Equatable {
     case passed
     /// Finished at a failing step.
     case failed
-    /// Finished, but the working tree changed while it ran.
-    case stale
     /// Stopped before finishing.
     case cancelled
   }
@@ -25,8 +23,8 @@ struct BackgroundStatus: Codable, Equatable {
   var state: State
   /// The process running the validation.
   var pid: Int32
-  /// Fingerprint of the working tree when the validation started.
-  var fingerprint: String
+  /// Pinned commit built by the worker.
+  var commit: String
   /// When the validation started.
   var started: Date
   /// When the validation finished, if it has.
@@ -37,29 +35,31 @@ struct BackgroundStatus: Codable, Equatable {
   /// one to stop.
   var token = ""
 
+  /// Whether the worker ran the complete configured scope.
+  var full = true
+
   /// Returns `true` when the validation holding `token` is running and still owns this record.
   func isOwned(byToken token: String) -> Bool {
     state == .running && self.token == token
   }
 
-  /// Returns `true` when this is a pass for the working tree with `currentFingerprint`.
-  func isCurrentPass(currentFingerprint: String) -> Bool {
-    state == .passed && fingerprint == currentFingerprint
+  /// Returns `true` when this is a pass for the working tree with `currentCommit`.
+  func isCurrentPass(currentCommit: String?) -> Bool {
+    state == .passed && commit == currentCommit
   }
 
-  /// A one-sentence description, saying whether a finished result applies to the working tree with `currentFingerprint`.
-  func headline(currentFingerprint: String) -> String {
+  /// A one-sentence description, saying whether a finished result applies to the working tree with `currentCommit`.
+  func headline(currentCommit: String?) -> String {
+    let scope = full ? "Full validation" : "Change-scoped validation"
     switch state {
       case .running:
-        return "Full validation is running."
-      case .stale:
-        return "Full validation finished, but the working tree changed while it ran, so its result does not apply."
+        return "\(scope) is running."
       case .cancelled:
-        return "Full validation was cancelled before it finished."
+        return "\(scope) was cancelled before it finished."
       case .passed, .failed:
         let duration = finished.map { " after \(Self.format($0.timeIntervalSince(started)))" } ?? ""
-        let tree = fingerprint == currentFingerprint ? "the current working tree" : "an earlier working tree"
-        return "Full validation \(state.rawValue)\(duration), for \(tree)."
+        let tree = commit == currentCommit ? "the current clean commit" : "a different checkout state"
+        return "\(scope) \(state.rawValue)\(duration), for \(tree)."
     }
   }
 

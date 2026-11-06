@@ -15,17 +15,18 @@ final class RepositoryOperationLock {
 
   /// Acquires exclusive ownership, optionally waiting for a running operation without replacing it.
   /// The wait callback is called once on contention, before blocking in the OS advisory lock.
-  init(repoPath: String, operation: String = "validation", background: Bool = false, wait: Bool = false, reportWait: (String) -> Void = { print($0) }) throws {
-    let paths = ValidationPaths(repoPath: repoPath)
+  init(repoPath: String, operation: String = "validation", background: Bool = false, wait: Bool = false, paths: ValidationPaths? = nil, name: String = "lock", reportWait: (String) -> Void = { print($0) }) throws {
+    let paths = paths ?? ValidationPaths(repoPath: repoPath)
+    let lockPath = "\(paths.root)/\(name)"
     try FileManager.default.createDirectory(atPath: paths.root, withIntermediateDirectories: true)
-    let descriptor = open(paths.lockPath, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
+    let descriptor = open(lockPath, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
     guard descriptor >= 0 else { throw ToolError("Cannot open the preparation/validation lock: \(String(cString: strerror(errno)))") }
     do {
       if flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
         guard errno == EWOULDBLOCK else {
           throw ToolError("Cannot acquire the preparation/validation lock: \(String(cString: strerror(errno)))")
         }
-        let owner = (try? Data(contentsOf: URL(fileURLWithPath: paths.lockPath))).flatMap { try? JSONDecoder().decode(RepositoryOperationOwner.self, from: $0) }
+        let owner = (try? Data(contentsOf: URL(fileURLWithPath: lockPath))).flatMap { try? JSONDecoder().decode(RepositoryOperationOwner.self, from: $0) }
         let holder = owner?.description ?? "another preparation or validation operation."
         guard wait else { throw ToolError("Cannot acquire the preparation/validation lock; held by \(holder)") }
         reportWait("Waiting for the preparation/validation lock; held by \(holder)")

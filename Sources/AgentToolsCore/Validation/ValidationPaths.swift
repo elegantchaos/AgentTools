@@ -12,8 +12,11 @@ struct ValidationPaths {
   /// Repository root.
   let repoPath: String
 
+  /// Explicit output location for worktree coordination.
+  var rootOverride: String? = nil
+
   /// Root of the per-project output.
-  var root: String { "\(repoPath)/.build/agt" }
+  var root: String { rootOverride ?? "\(repoPath)/.build/agt" }
   /// Directory for per-step logs.
   var logRoot: String { "\(root)/logs" }
   /// Private DerivedData directory for Xcode validation.

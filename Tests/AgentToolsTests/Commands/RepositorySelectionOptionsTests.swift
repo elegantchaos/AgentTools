@@ -23,7 +23,7 @@ struct RepositorySelectionOptionsTests {
     #expect(config.planOnly)
     #expect(config.outputMode == .quiet)
     #expect(config.clean == false)
-    #expect(config.fast == false)
+    #expect(config.full == false)
     #expect(config.background == false)
     #expect(config.backgroundWorker == false)
     #expect(config.status == false)
