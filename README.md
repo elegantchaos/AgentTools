@@ -150,7 +150,7 @@ agt vm ui screenshot shot.png --app com.elegantchaos.Bookish
 agt vm stop
 ```
 
-`start` clones the base image, boots the clone headless, or with a window to watch when given `--window`, and shares a host folder with it read-only. It returns once the guest user owns the console and Finder is running, printing the clone's name and address. The share defaults to validation's Debug build products, where `agt validate` and `--build` put them; `--share` names another folder. `--build` first builds the scheme for macOS, as `agt validate --target <scheme>` does. If the clone does not become ready, it is deleted, and the error names tart's log.
+`start` clones the base image, boots the clone headless, or with a window to watch when given `--window`, and shares a host folder with it read-only. It returns once the guest user owns the console and Finder is running, printing the clone's name and address. The share defaults to validation's Debug build products, where targeted validation and `--build` put them; `--share` names another folder. `--build` first builds the scheme for macOS, as `agt validate --target <scheme>` does. If the clone does not become ready, it is deleted, and the error names tart's log.
 
 `launch` opens an app as the guest user, from a path relative to the share or an absolute guest path. `ui` passes everything after its own options to the guest's `agt ui` and exits with its status. A screenshot's path is a host path: the guest writes a temporary file, which is copied back and deleted. `stop` stops the clone and deletes it, or with `--keep` leaves it stopped. `list` shows the clones and their states.
 
@@ -191,7 +191,7 @@ agt prepare
 agt prepare --plan
 ```
 
-Preparation uses the project's validation configuration and shared package/container selection options (`--workspace`, `--project`, `--schemes`, `--package-dirs`, `--no-recursive-packages`). It resolves discovered packages for targeted SwiftPM validation even when the product scheme already covers their tests, plus the Xcode schemes and independent package containers full validation uses. Unchanged submodule examples that discovery leaves unexamined are not prepared. It uses validation's existing scratch and DerivedData paths, evaluates manifests, and may update `Package.resolved`. It does not build targets, run tests or boot simulators. Plan mode performs discovery, which may itself resolve Xcode dependencies, but does not execute the listed resolution steps. Preparation and validation acquire the same checkout lock at `.build/agt/lock`, which survives cleaning. Execution stops a running background validation before resolving and fails promptly if another foreground operation owns the directories. Both plan commands instead wait for ownership without stopping the current operation, reporting its PID and operation; background ownership also names `agt validate --status` and `--wait`.
+Preparation uses the project's validation configuration and shared package/container selection options (`--workspace`, `--project`, `--schemes`, `--package-dirs`, `--no-recursive-packages`). It resolves discovered packages for targeted SwiftPM validation even when the product scheme already covers their tests, plus the Xcode schemes and independent package containers full validation uses. Unchanged submodule examples that discovery leaves unexamined are not prepared. It uses validation's existing scratch and DerivedData paths, evaluates manifests, and may update `Package.resolved`. It does not build targets, run tests or boot simulators. Plan mode performs discovery, which may itself resolve Xcode dependencies, but does not execute the listed resolution steps. Preparation and targeted validation acquire the same checkout lock at `.build/agt/lock`, which survives cleaning. Execution fails promptly if another operation owns those directories. Plan commands wait for ownership. Committed validation prepares its dependencies in the paired validation worktree as needed.
 
 Some agent sandboxes protect dependency `.git/config` and `.git/hooks` even inside writable directories. In those environments, run `agt worktree create` or `agt prepare` once outside the sandbox with explicit user approval, or ask the user to run it. Both commands remain inside their caller's sandbox and never escalate themselves. Claude and Codex restrictions differ; a sandbox that permits dependency checkout creation can prepare inside it. Git's shared repository cache and empty templates do not eliminate local checkout metadata writes. Preparation is not validation evidence. Repeat it after dependency graph changes, switching to revisions needing different dependencies, removing checkout directories or `agt validate --clean`.
 
@@ -206,49 +206,34 @@ Worktree creation handles Git setup; runtime integration is separate. A desktop 
 - *Fast feedback first.* Build errors should surface as early as possible, so validation starts at the smallest useful scope: the affected module, built for the host platform.
 - *Complete coverage after.* A change can also break another platform, an integration between modules, or a test. Full validation builds the whole product for every platform it supports and runs all of its tests.
 
-Validation never modifies the project, so formatting is a separate command. After a change, run both from the repository root:
+Formatting and linting are separate from validation. `agt format` formats tracked and untracked Swift files in place, then lints them and reports findings without failing. Swift files inside a `Resources` directory under `Tests` are treated as fixtures and skipped. Files can opt out with a `// swift-format-ignore-file` comment, and files or directories with `format.exclude`. Use `agt format --check` to check without editing files and fail on findings.
 
 ```shell
 agt format
-agt validate
+agt validate --target AgentToolsCore  # check live edits to a named target
+# Commit the changes before checking the branch.
+agt validate                         # check committed changes against main
+agt validate --full                  # run the complete configured plan
 ```
 
-`agt format` formats every tracked and untracked Swift file in place with `swift format`, then lints them and reports any findings without failing. Swift files inside a `Resources` directory under `Tests` are treated as fixtures and skipped; other files can opt out with a `// swift-format-ignore-file` comment, and whole files or directories with `format.exclude` in the project configuration. When linting finds anything, a summary line counts the findings, the files, and the most common rules; the full list is in the lint log. `agt format --check` modifies nothing and fails on any finding.
+#### Targeted and change-scoped validation
 
-Check a change quickly with the fast phase, then run full validation:
+`agt validate --target <name>` builds the named target and runs dependent tests from the development checkout. If no package defines the target, it builds the Xcode scheme of that name for macOS.
+
+Bare `agt validate` uses the diff from the merge base with local `main` (falling back to `origin/main`) to the requested commit. It builds affected targets for macOS and runs dependent tests. A changed test selects its test target. Package manifests, dependency resolutions and submodule updates widen selection to the package. App sources and Xcode build inputs outside packages select the product scheme. With no relevant changes, nothing runs.
+
+Change-scoped and full validation require a clean checkout, including submodules. Each development checkout gets a persistent detached validation worktree under `.build/agt-validation/`. AgentTools updates only that paired checkout and reuses its build outputs. Keep the repository's `.build` directory ignored. The paired worktree's Git metadata and dependencies must be writable under the caller's permissions.
+
+#### Background validation
 
 ```shell
-agt validate --fast
-agt validate
+agt validate --full --background
+agt validate --wait --full
 ```
 
-#### What the fast phase covers
+`--background` runs the selected committed scope in a detached process. `--status` reports the tested commit, scope and result. `--wait` requires a passing result for the current clean commit. Add `--full` to require full coverage. Output goes to `.build/agt-validation/background/output.log`.
 
-The fast phase finds the smallest scope that covers the uncommitted changes, including untracked files, builds it for macOS, and runs the tests that depend on it:
-
-- A changed file in a Swift package target builds that target with SwiftPM, and runs the package's test targets that depend on it. A changed test file runs its test target.
-- A changed `Package.swift`, `Package.resolved`, or git submodule builds and tests its whole package.
-- A build input outside every package target, such as an app source file, a resource, or an Xcode project file, builds the product scheme for macOS with `xcodebuild`.
-- Anything else, such as documentation, is ignored. With no relevant changes, nothing runs.
-
-`agt validate --target <name>` runs the fast phase for a named target instead of the changes, or builds the Xcode scheme of that name for macOS when no package defines the target.
-
-`agt validate --fast --plan` shows where each changed file was assigned, and the steps.
-
-#### Full validation in the background
-
-Full validation can take minutes, so it can run in the background while work continues:
-
-```shell
-agt validate --fast --background
-agt validate --wait
-```
-
-`--background` starts full validation as a detached process and returns immediately; with `--fast`, it starts once the fast phase passes. `agt validate --status` reports the latest result, and `agt validate --wait` waits for a running validation to finish, then fails unless full validation passed for the current working tree. Output goes to `.build/agt/background/output.log`.
-
-Each result records a fingerprint of the working tree, including untracked files, so a result is only trusted for the tree it checked. If the tree changes while validation runs, the result is marked stale. Starting background validation when it has already passed for the current tree does nothing.
-
-Only one validation runs at a time, since they share build directories. Any new run, background or foreground, replaces the marker that a running background validation checks, and that validation stops itself at its next check, interrupting its current command. If it has not stopped within 30 seconds, it is killed.
+A new committed run can replace a background run for the same development checkout. Each paired validation worktree is locked from checkout preparation through execution. Other pairs and targeted checks use separate build directories and locks.
 
 #### What full validation covers
 
@@ -259,7 +244,7 @@ Full validation builds the product first, then tests it:
 
 The product is the Xcode workspace in the repository root, or else its Xcode project, or else its root `Package.swift`. The default product scheme is the one named after the repository, or the root package's scheme when there is no workspace or project. For an Xcode product, the platforms are those its schemes support; a Swift package product is built for macOS unless configured otherwise.
 
-A local Swift package is part of the product when the product uses it: the workspace lists it, a project references it as a local package, it is the root package of a Swift package product, or it is a local path dependency of one of those. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so by default their tests run only when the submodule differs from the commit the repository records, for example after editing it in place.
+A local Swift package is part of the product when the product uses it: the workspace lists it, a project references it as a local package, it is the root package of a Swift package product, or it is a local path dependency of one of those. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so full validation includes eligible submodule packages by default.
 
 The fastest arrangement is for the product scheme to run every package's tests itself, so the whole product builds once per platform and Xcode runs all the tests together. When a product scheme has a test plan named `Full Validation`, validation runs that plan (`-testPlan "Full Validation"`), leaving the scheme's default plan free for quicker runs in Xcode; otherwise it runs the scheme's default tests. A test plan or scheme lists a package's tests by its `container:` path, and Xcode runs them only when the package is a member of the workspace, skipping them without any message otherwise.
 
@@ -294,7 +279,7 @@ Projects configure formatting and validation in `.agt/config.json`, committed, w
 - `schemes` (`--schemes`): the schemes that build the product.
 - `platforms` (`--platforms`): the platforms to build for: `macOS`, `iOS`, `tvOS`, `watchOS`, `visionOS`.
 - `testPlatforms` (`--test-platforms`): the platforms to test on; defaults to the build platforms. `["macOS"]` avoids simulators.
-- `testSubmodules` (`--test-submodules`): when to test packages in git submodules: `changed` (the default), `always`, or `never`.
+- `testSubmodules` (`--test-submodules`): when to test packages in Git submodules. Full validation includes eligible submodule packages with `always` or `changed` (the default). `never` omits separate submodule test steps.
 - `excludePackages`: packages whose tests never run separately, by package name. The coverage check does not report them.
 
 See what validation would do without running anything: every local package, with how its tests run or why they do not, then each step with its exact command:
@@ -362,7 +347,7 @@ sandbox_workspace_write.writable_roots = ["/Users/you/Library/Caches/org.swift.s
 
 ```shell
 agt format
-agt validate
+agt validate --full
 ```
 
 Or directly with SwiftPM:

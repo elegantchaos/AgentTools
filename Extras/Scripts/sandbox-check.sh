@@ -22,6 +22,9 @@ else
   repo="$work/SwiftPackage"
   cp -R "$root/Extras/Fixtures/SwiftPackage" "$repo"
   git -C "$repo" init --quiet
+  printf ".build/\n" >> "$repo/.gitignore"
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=Fixture -c user.email=fixture@example.invalid commit --quiet -m Fixture
 fi
 
 tmp="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
@@ -41,6 +44,6 @@ profile="(version 1)
 
 echo "== Validating $repo in a sandbox"
 status=0
-(cd "$repo" && sandbox-exec -p "$profile" "$agt" validate) || status=$?
+(cd "$repo" && sandbox-exec -p "$profile" "$agt" validate --full) || status=$?
 
 exit "$status"

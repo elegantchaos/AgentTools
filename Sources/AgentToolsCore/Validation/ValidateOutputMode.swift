@@ -6,7 +6,7 @@
 import ArgumentParser
 
 /// Output verbosity modes supported by `agt validate`.
-enum ValidateOutputMode: String, ExpressibleByArgument, CaseIterable {
+enum ValidateOutputMode: String, Codable, ExpressibleByArgument, CaseIterable {
   /// Print selected diagnostics from validation output.
   case filtered
   /// Suppress streamed validation output.

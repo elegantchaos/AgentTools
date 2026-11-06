@@ -93,6 +93,11 @@ final class StepRunner {
     print(line)
   }
 
+  /// Adopts the steps recorded by validation in a paired checkout.
+  func copySummary(from runner: StepRunner) {
+    steps = runner.steps
+  }
+
   /// Prints every recorded step, with log paths for failures, or the number of planned steps.
   func printSummary() {
     if planOnly {

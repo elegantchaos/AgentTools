@@ -4,12 +4,12 @@
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 /// Resolved repository settings shared by preparation and validation, plus validation-only action flags.
-struct ValidationConfig {
+struct ValidationConfig: Codable {
   /// Whether to remove previous validation output first.
   var clean: Bool
-  /// Whether to run the fast phase for uncommitted changes instead of full validation.
-  var fast: Bool
-  /// Whether to run full validation in the background, after the fast phase when `fast` is set.
+  /// Whether to validate the complete configured scope.
+  var full: Bool
+  /// Whether to run the selected validation scope in the background.
   var background: Bool
   /// Whether to report the background validation.
   var status: Bool
@@ -20,9 +20,9 @@ struct ValidationConfig {
   /// A target to run the fast phase for, instead of the changes.
   var target: String?
   /// Explicit workspace path.
-  let workspaceOverride: String?
+  var workspaceOverride: String?
   /// Explicit project path.
-  let projectOverride: String?
+  var projectOverride: String?
   /// Schemes that build the product; empty to use the default.
   let schemes: [String]
   /// Platforms to build for; empty to use the platforms the product supports.
@@ -30,11 +30,11 @@ struct ValidationConfig {
   /// Platforms to test on; empty to test on every build platform.
   let testPlatforms: [ApplePlatform]
   /// When to test packages in git submodules.
-  let testSubmodules: TestSubmodules
+  var testSubmodules: TestSubmodules
   /// Packages whose tests never run.
   let excludedPackages: [String]
   /// Explicit Swift package directories.
-  let packageDirsOverride: [String]?
+  var packageDirsOverride: [String]?
   /// Whether to discover nested packages.
   let recursivePackageDiscovery: Bool
   /// Whether to disable SwiftPM sandboxing.

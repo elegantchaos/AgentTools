@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-06 Validation Worktrees](2026-11-06-validation-worktrees.md) — Proposed paired validation worktrees, commit-based fast scope, and audit of existing decisions.
+
 - [2026-11-05 Lock Release Race](2026-11-05-lock-release-race.md) — Reproduced checkout-lock contention after owner deallocation during parallel process launches; explicit unlocking passes 800 stress iterations and all 275 targeted tests after rebasing onto current main.
 
 - [2026-11-04 AgentTools 3.15.0](2026-11-04-release-3.15.0.md) — Release of `agt vm` and `press` focusing text fields from PR #12; the guest's `agt` needs the new build and fresh grants for focusing.
