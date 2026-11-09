@@ -62,6 +62,126 @@ struct BackgroundValidationTests {
     #expect(status.isCurrentPass(currentCommit: current) == expected)
   }
 
+  @Test(
+    arguments: [
+      (BackgroundStatus.State.passed, true, "abc", false, true),
+      (.passed, true, "abc", true, true),
+      (.passed, false, "abc", false, true),
+      (.passed, false, "abc", true, false),
+      (.passed, true, "xyz", false, false),
+      (.passed, true, nil, false, false),
+      (.empty, false, "abc", false, false),
+      (.failed, true, "abc", false, false),
+      (.cancelled, true, "abc", false, false),
+    ] as [(BackgroundStatus.State, Bool, String?, Bool, Bool)])
+  func waitAcceptsOnlyAPassOfTheRequiredScopeForTheCurrentCommit(
+    state: BackgroundStatus.State, full: Bool, current: String?, requireFull: Bool, satisfied: Bool
+  ) {
+    let status = BackgroundStatus(state: state, pid: 1, commit: "abc", started: .now, full: full)
+    #expect((status.waitFailure(currentCommit: current, requireFull: requireFull) == nil) == satisfied)
+  }
+
+  @Test func anEmptyChangeScopeIsReportedAsNothingValidated() {
+    let status = BackgroundStatus(state: .empty, pid: 1, commit: "abc", started: .now, full: false)
+    #expect(status.headline(currentCommit: "abc") == "Change-scoped validation found nothing to build or test, for the current clean commit.")
+    #expect(!status.isCurrentPass(currentCommit: "abc"))
+    #expect(status.waitFailure(currentCommit: "abc", requireFull: false)?.contains("nothing to build or test") == true)
+  }
+
+  @Test(arguments: [["--full"], ["--background"]])
+  func targetedValidationRejectsCommittedOptions(options: [String]) throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let config = try ValidateCommand.parse(["--target", "Core"] + options).config(repoPath: root.path)
+    #expect(throws: ToolError.self) { try ValidationTool(config: config, repoPath: root.path).run() }
+  }
+
+  @Test func changeScopeFallsBackToOriginMainAndFailsClearlyWithoutEither() throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = ValidationProcess(workingDirectory: root.path)
+    let config = try ValidateCommand.parse([]).config(repoPath: root.path)
+    let initial = try git(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .newlines)
+    _ = try git(["branch", "-m", "main", "feature/test"], in: root)
+    _ = try git(["update-ref", "refs/remotes/origin/main", initial], in: root)
+    try "let a = 2\n".write(to: root.appendingPathComponent("Tracked.swift"), atomically: true, encoding: .utf8)
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qam", "Change source"], in: root)
+    #expect(try ValidationSnapshot(process: source, config: config).baseline == initial)
+
+    _ = try git(["update-ref", "-d", "refs/remotes/origin/main"], in: root)
+    let error = #expect(throws: ToolError.self) { try ValidationSnapshot(process: source, config: config) }
+    #expect(error?.description.contains("local main or origin/main") == true)
+  }
+
+  @Test func pairedCheckoutRefusesACheckoutItDidNotCreate() throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paired = ValidationCheckout(source: ValidationProcess(workingDirectory: root.path))
+    let foreign = URL(fileURLWithPath: paired.path)
+    try FileManager.default.createDirectory(at: foreign, withIntermediateDirectories: true)
+    _ = try git(["init", "--quiet"], in: foreign)
+    let precious = foreign.appendingPathComponent("precious.txt")
+    try "keep\n".write(to: precious, atomically: true, encoding: .utf8)
+    let commit = try git(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .newlines)
+
+    #expect(throws: ToolError.self) { try paired.materialise(commit: commit) }
+    #expect(FileManager.default.fileExists(atPath: precious.path))
+  }
+
+  @Test func pairedCheckoutRefusesACheckoutMovedOntoABranch() throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paired = ValidationCheckout(source: ValidationProcess(workingDirectory: root.path))
+    let commit = try git(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .newlines)
+    try paired.materialise(commit: commit)
+    _ = try git(["switch", "--quiet", "-c", "someone-elses-work"], in: URL(fileURLWithPath: paired.path))
+
+    #expect(throws: ToolError.self) { try paired.materialise(commit: commit) }
+  }
+
+  @Test func pairedCheckoutRefusesRedirectedState() throws {
+    let root = try makeRepo()
+    let elsewhere = try makeRepo()
+    defer {
+      try? FileManager.default.removeItem(at: root)
+      try? FileManager.default.removeItem(at: elsewhere)
+    }
+    let paired = ValidationCheckout(source: ValidationProcess(workingDirectory: root.path))
+    try FileManager.default.createDirectory(at: root.appendingPathComponent(".build"), withIntermediateDirectories: true)
+    try paired.checkLocation()
+
+    try FileManager.default.createSymbolicLink(atPath: paired.directory, withDestinationPath: elsewhere.path)
+    #expect(throws: ToolError.self) { try paired.checkLocation() }
+  }
+
+  @Test func pairedCheckoutAcceptsASourceUnderPrivate() throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    // The shell reports temporary directories as /private/var, while Foundation strips /private from existing paths.
+    let real = try #require(realpath(root.path, nil))
+    defer { free(real) }
+    let source = ValidationProcess(workingDirectory: String(cString: real))
+    let paired = ValidationCheckout(source: source)
+    let commit = try git(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .newlines)
+
+    try paired.checkLocation()
+    try paired.materialise(commit: commit)
+    #expect(try paired.snapshotPath("Tracked.swift").hasSuffix("/.build/agt-validation/checkout/Tracked.swift"))
+  }
+
+  @Test func snapshotPathsMapIntoTheCheckoutAndCannotEscapeIt() throws {
+    let root = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paired = ValidationCheckout(source: ValidationProcess(workingDirectory: root.path))
+    try paired.materialise(commit: try git(["rev-parse", "HEAD"], in: root).trimmingCharacters(in: .newlines))
+    let checkout = URL(fileURLWithPath: paired.path).resolvingSymlinksInPath()
+
+    #expect(try paired.snapshotPath("Tracked.swift") == checkout.appendingPathComponent("Tracked.swift").path)
+    #expect(try paired.snapshotPath(root.appendingPathComponent("Tracked.swift").path) == checkout.appendingPathComponent("Tracked.swift").path)
+    #expect(throws: ToolError.self) { try paired.snapshotPath("../outside") }
+    #expect(throws: ToolError.self) { try paired.snapshotPath("/usr/bin") }
+  }
+
   @Test func aRunningStepStopsPromptlyWhenAsked() throws {
     let root = try makeRepo()
     defer { try? FileManager.default.removeItem(at: root) }

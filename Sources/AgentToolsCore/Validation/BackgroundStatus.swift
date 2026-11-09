@@ -15,6 +15,8 @@ struct BackgroundStatus: Codable, Equatable {
     case passed
     /// Finished at a failing step.
     case failed
+    /// Finished without building or testing anything, because nothing in scope changed. Not a pass.
+    case empty
     /// Stopped before finishing.
     case cancelled
   }
@@ -48,17 +50,34 @@ struct BackgroundStatus: Codable, Equatable {
     state == .passed && commit == currentCommit
   }
 
+  /// Returns why waiting for this result fails for `currentCommit`, or `nil` when it satisfies the wait.
+  /// `requireFull` rejects a change-scoped pass.
+  func waitFailure(currentCommit: String?, requireFull: Bool) -> String? {
+    if state == .empty, commit == currentCommit {
+      return "Change-scoped validation found nothing to build or test for the current commit, so there is no pass. Use --full for complete coverage."
+    }
+    guard isCurrentPass(currentCommit: currentCommit) else {
+      return "Background validation did not pass for the current clean commit."
+    }
+    if requireFull, !full {
+      return "Only change-scoped validation passed for the current commit; --full requires a full pass."
+    }
+    return nil
+  }
+
   /// A one-sentence description, saying whether a finished result applies to the working tree with `currentCommit`.
   func headline(currentCommit: String?) -> String {
     let scope = full ? "Full validation" : "Change-scoped validation"
+    let tree = commit == currentCommit ? "the current clean commit" : "a different checkout state"
     switch state {
       case .running:
         return "\(scope) is running."
       case .cancelled:
         return "\(scope) was cancelled before it finished."
+      case .empty:
+        return "\(scope) found nothing to build or test, for \(tree)."
       case .passed, .failed:
         let duration = finished.map { " after \(Self.format($0.timeIntervalSince(started)))" } ?? ""
-        let tree = commit == currentCommit ? "the current clean commit" : "a different checkout state"
         return "\(scope) \(state.rawValue)\(duration), for \(tree)."
     }
   }

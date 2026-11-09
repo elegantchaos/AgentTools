@@ -22,6 +22,8 @@ final class ValidationTool {
   private var sandbox = EnclosingSandbox(isNested: false)
   /// Discovery results saved between runs, loaded when validation starts.
   private var cache: DiscoveryCache?
+  /// Set when change-scoped selection found nothing to build or test, so the run is not validation evidence.
+  private(set) var foundNothingInScope = false
 
   /// Creates a tool that validates the repository at `repoPath`.
   init(config: ValidationConfig, repoPath: String, snapshot: ValidationSnapshot? = nil) {
@@ -75,22 +77,40 @@ final class ValidationTool {
         try validateSnapshot(request)
         return
       }
-      let admission = try admissionLock()
-      defer { withExtendedLifetime(admission) {} }
-      BackgroundLauncher.supersede(store: backgroundStore)
-      if config.background {
-        let status = try BackgroundLauncher.start(repoPath: repoPath, snapshot: request, store: backgroundStore)
-        print("Validation of \(request.commit) started in the background (process \(status.pid)).")
-        print("Check it with `agt validate --status`, or wait with `agt validate --wait`. Output: \(backgroundStore.logPath)")
-      } else {
-        try validateSnapshot(request)
+      // Admission covers only supersession and launch. A foreground run takes the checkout lock before releasing it,
+      // so a later background request returns at once and its worker queues behind this run.
+      let ownership: RepositoryOperationLock
+      do {
+        let admission = try admissionLock()
+        defer { withExtendedLifetime(admission) {} }
+        if BackgroundLauncher.supersede(store: backgroundStore) {
+          print("Stopped the background validation that was running for this checkout.")
+        }
+        if config.background {
+          let status = try BackgroundLauncher.start(repoPath: repoPath, snapshot: request, store: backgroundStore)
+          print("Validation of \(request.commit) started in the background (process \(status.pid)).")
+          print("Check it with `agt validate --status`, or wait with `agt validate --wait`. Output: \(backgroundStore.logPath)")
+          return
+        }
+        ownership = try checkoutLock()
+      }
+      if try !validateSnapshot(request, holding: ownership) {
+        print("Nothing was built or tested, so this is not validation evidence.")
       }
     }
   }
 
   /// Serialises background launch and supersession separately from checkout ownership.
   private func admissionLock() throws -> RepositoryOperationLock {
-    try RepositoryOperationLock(repoPath: repoPath, operation: "validation admission", wait: true, paths: checkout.lockPaths, name: "admission", reportWait: { _ in })
+    try RepositoryOperationLock(repoPath: repoPath, operation: "validation admission", wait: true, paths: checkout.lockPaths, name: "admission")
+  }
+
+  /// Takes ownership of the paired checkout, waiting for the operation that holds it.
+  private func checkoutLock() throws -> RepositoryOperationLock {
+    try RepositoryOperationLock(
+      repoPath: repoPath, operation: config.planOnly ? "validation planning" : "validation", background: config.backgroundWorker,
+      wait: true, paths: checkout.lockPaths
+    )
   }
 
   /// Resolves dependencies for targeted and full validation without building targets or starting simulators.
@@ -122,13 +142,12 @@ final class ValidationTool {
     }
   }
 
-  /// Executes a pinned request while holding ownership of the paired checkout.
-  private func validateSnapshot(_ request: ValidationSnapshot) throws {
+  /// Executes a pinned request while holding ownership of the paired checkout, taking it unless `held` is given.
+  /// Returns `false` when the request had nothing in scope to build or test.
+  @discardableResult
+  private func validateSnapshot(_ request: ValidationSnapshot, holding held: RepositoryOperationLock? = nil) throws -> Bool {
     try checkout.checkLocation()
-    let lock = try RepositoryOperationLock(
-      repoPath: repoPath, operation: config.planOnly ? "validation planning" : "validation", background: config.backgroundWorker,
-      wait: true, paths: checkout.lockPaths
-    )
+    let lock = try held ?? checkoutLock()
     defer { withExtendedLifetime(lock) {} }
     try checkNotSuperseded()
     try checkout.materialise(commit: request.commit)
@@ -146,6 +165,7 @@ final class ValidationTool {
     print("Validating commit \(request.commit) in \(checkout.path)")
     defer { runner.copySummary(from: tool.runner) }
     try tool.validate()
+    return !tool.foundNothingInScope
   }
 
   /// Runs a pinned background request, recording its result if it still owns the status.
@@ -161,8 +181,7 @@ final class ValidationTool {
     }
     guard var status = published, status.isOwned(byToken: workerToken), status.pid == getpid() else { return }
     do {
-      try validateSnapshot(request)
-      status.state = .passed
+      status.state = try validateSnapshot(request) ? .passed : .empty
     } catch is Superseded {
       return
     } catch {
@@ -239,8 +258,8 @@ final class ValidationTool {
       print(line)
     }
     print("Output: \(store.logPath)")
-    if waiting, !status.isCurrentPass(currentCommit: commit) || (config.full && !status.full) {
-      throw ToolError("Background validation did not pass for the current clean commit.")
+    if waiting, let failure = status.waitFailure(currentCommit: commit, requireFull: config.full) {
+      throw ToolError(failure)
     }
   }
 
@@ -599,6 +618,7 @@ final class ValidationTool {
       print("== Steps")
     }
     guard !scope.isEmpty else {
+      foundNothingInScope = true
       print(scope.assignments.isEmpty ? "No changes to validate." : "Nothing to build or test for these changes.")
       return
     }

@@ -27,8 +27,10 @@ struct ValidationSnapshot: Codable {
     if config.full {
       baseline = nil
     } else {
-      let main = try process.capture(["git", "rev-parse", "--verify", "refs/heads/main"])
-      let ref = main.status == 0 ? "refs/heads/main" : "refs/remotes/origin/main"
+      let candidates = ["refs/heads/main", "refs/remotes/origin/main"]
+      guard let ref = try candidates.first(where: { try process.capture(["git", "rev-parse", "--verify", "--quiet", $0]).status == 0 }) else {
+        throw ToolError("Change-scoped validation needs a local main or origin/main branch to compare against. Use --full or --target instead.")
+      }
       baseline = try Self.git(["merge-base", ref, commit], using: process)
     }
   }

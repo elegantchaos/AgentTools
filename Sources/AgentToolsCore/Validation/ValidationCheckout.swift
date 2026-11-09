@@ -21,11 +21,14 @@ struct ValidationCheckout {
 
   /// Ensures the state directory stays within the development checkout.
   func checkLocation() throws {
-    let root = URL(fileURLWithPath: source.workingDirectory, isDirectory: true).resolvingSymlinksInPath()
-    let location = URL(fileURLWithPath: directory, isDirectory: true)
-    guard location.resolvingSymlinksInPath().path == root.appendingPathComponent(".build/agt-validation").path else {
+    guard Self.resolved(directory) == Self.resolved(source.workingDirectory) + "/.build/agt-validation" else {
       throw ToolError("Validation state must not be redirected by a symbolic link: \(directory)")
     }
+  }
+
+  /// Resolves symbolic links and canonicalises `/private`, which Foundation strips only from paths that exist.
+  private static func resolved(_ path: String) -> String {
+    ValidationPaths.canonical(URL(fileURLWithPath: path).resolvingSymlinksInPath().path)
   }
 
   /// Creates or resets the owned checkout. The caller holds the operation lock.
@@ -35,8 +38,7 @@ struct ValidationCheckout {
     let marker = URL(fileURLWithPath: "\(directory)/owner")
     let checkout = ValidationProcess(workingDirectory: path)
     let git = ValidationSnapshot.git
-    let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-    guard resolved == URL(fileURLWithPath: directory).resolvingSymlinksInPath().appendingPathComponent("checkout").path else {
+    guard Self.resolved(path) == Self.resolved(directory) + "/checkout" else {
       throw ToolError("Refusing a validation checkout redirected by a symbolic link: \(path)")
     }
     if !files.fileExists(atPath: path) {
@@ -61,14 +63,14 @@ struct ValidationCheckout {
 
   /// Translates a source-relative override into the snapshot and refuses references outside it.
   func snapshotPath(_ value: String) throws -> String {
-    let sourceURL = URL(fileURLWithPath: source.workingDirectory, isDirectory: true).resolvingSymlinksInPath()
-    let input = ValidationDiscovery.resolvePath(value, repoPath: sourceURL.path)
-    let relative = input == sourceURL.path ? "" : String(input.dropFirst(sourceURL.path.count + 1))
-    let root = URL(fileURLWithPath: path, isDirectory: true).resolvingSymlinksInPath()
-    let mapped = root.appendingPathComponent(relative).resolvingSymlinksInPath().path
-    guard input == sourceURL.path || input.hasPrefix(sourceURL.path + "/"),
-      mapped == root.path || mapped.hasPrefix(root.path + "/")
-    else {
+    let sourcePath = Self.resolved(source.workingDirectory)
+    let input = Self.resolved(ValidationDiscovery.resolvePath(value, repoPath: sourcePath))
+    guard input == sourcePath || input.hasPrefix(sourcePath + "/") else {
+      throw ToolError("Validation path '\(value)' must be inside the validation snapshot.")
+    }
+    let root = Self.resolved(path)
+    let mapped = Self.resolved(root + String(input.dropFirst(sourcePath.count)))
+    guard mapped == root || mapped.hasPrefix(root + "/") else {
       throw ToolError("Validation path '\(value)' must be inside the validation snapshot.")
     }
     return mapped
