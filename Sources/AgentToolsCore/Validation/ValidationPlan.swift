@@ -283,8 +283,20 @@ enum ValidationPlan {
     sandbox: EnclosingSandbox,
     quiet: Bool
   ) -> [String] {
-    ["xcodebuild"] + container + ["-scheme", scheme] + (testPlan.map { ["-testPlan", $0] } ?? []) + ["-destination", destination, "-derivedDataPath", derivedDataPath ?? paths.derivedDataPath]
-      + XcodeDestinations.trustArguments + sandbox.xcodebuildDefaults + (quiet ? ["-quiet"] : []) + ["CODE_SIGNING_ALLOWED=NO"]
-      + sandbox.xcodebuildBuildSettings + [action]
+    // Built in steps: Swift 6.2 cannot type-check this as one concatenation in reasonable time.
+    var arguments = ["xcodebuild"] + container + ["-scheme", scheme]
+    if let testPlan {
+      arguments += ["-testPlan", testPlan]
+    }
+    arguments += ["-destination", destination, "-derivedDataPath", derivedDataPath ?? paths.derivedDataPath]
+    arguments += XcodeDestinations.trustArguments
+    arguments += sandbox.xcodebuildDefaults
+    if quiet {
+      arguments.append("-quiet")
+    }
+    arguments.append("CODE_SIGNING_ALLOWED=NO")
+    arguments += sandbox.xcodebuildBuildSettings
+    arguments.append(action)
+    return arguments
   }
 }
