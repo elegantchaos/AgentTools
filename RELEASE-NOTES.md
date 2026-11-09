@@ -1,5 +1,17 @@
 # Release Notes
 
+## 4.0.0
+
+Validation now has three modes, and bare `agt validate` no longer runs full validation. Callers that need complete coverage must pass `--full`.
+
+- **Breaking:** `--fast` is removed. `agt validate --target <name>` checks live edits to one target, as before. Bare `agt validate` checks the committed changes since the merge base with local `main` (or `origin/main`). `agt validate --full` runs the complete configured plan.
+- Change-scoped and full validation build a pinned commit in a persistent validation worktree paired with each development worktree, under `.build/agt-validation/`. Later edits or branch switches don't affect a run, and separate development worktrees can validate at the same time.
+- Change-scoped and full validation refuse a checkout with uncommitted changes, including in submodules, and refuse submodule commits that no remote branch contains. Push submodule work first; an integration branch is enough.
+- `--background` runs the selected scope; add `--full` for full validation. `--status` reports the tested commit, scope and result. `--wait` requires a pass for the current clean commit, and `--wait --full` also requires a full one. A change-scoped run with nothing to build or test is recorded as finding nothing, never as a pass.
+- `testSubmodules: changed`, the default, now tests a submodule's packages in full validation when the branch moved the submodule's commit since the merge base with `main`.
+- A background request returns as soon as its worker starts, even while a foreground run holds the checkout, and waits for either lock are reported.
+- Fixes checkout-lock ownership occasionally surviving its owner while other processes were being launched, which made the next preparation or validation fail on a held lock.
+
 ## 3.15.0
 
 - Adds `agt vm` for running a macOS app in a throwaway [tart](https://tart.run) clone and driving it from the host. `start` clones the base image, boots it with a host folder shared read-only and waits for the guest user's session; `--build` builds the scheme first and `--window` shows the VM. `launch` opens an app from the share, `ui` runs the guest's `agt ui` with screenshots copied back to host paths, `stop` deletes the clone (or `--keep`s it stopped), and `list` shows clones.

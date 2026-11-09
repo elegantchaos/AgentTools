@@ -6,15 +6,15 @@ This overview tracks current priorities, follow-up work and return points for `a
 
 ## You Are Here
 
-**Current focus: release the paired-worktree validation modes.**
+**Current focus: adopt the 4.0.0 validation modes in shared guidance.**
 
-PR #14 adds targeted, change-scoped and full validation in paired worktrees. Return point: merge, release, then merge elegantchaos/Agents#45 so the `swift:validation` skill uses the new flags, and return to Bookish.
+PR #14 merged and is released as 4.0.0. Return point: merge elegantchaos/Agents#45 so the `swift:validation` skill uses the new flags, refresh the Swift plugin, and return to Bookish.
 
 ## Current And Parked Work
 
 | Slice | Finish condition | State |
 | --- | --- | --- |
-| Paired-worktree validation | PR #14 merged and released; Agents #45 merged and the Swift plugin refreshed. | In review. |
+| Paired-worktree validation | PR #14 merged and released; Agents #45 merged and the Swift plugin refreshed. | Merged and released as 4.0.0; Agents #45 pending. |
 | Reuse recorded validation passes | Committed validation skips work whose inputs already passed, as described below, with a decision record. | Planned follow-up. |
 | Retire paired worktrees | A paired validation worktree is removed or pruned when its development worktree goes away. | Open question in the [Validation Design](Extras/Documentation/Validation%20Design.md). |
 | Sandbox setup for paired worktrees | `agt worktree create` and `agt prepare` create and prepare the paired worktree, so the first committed validation in a sandbox does not need Git metadata writes. | Candidate, from the PR #14 review. |
