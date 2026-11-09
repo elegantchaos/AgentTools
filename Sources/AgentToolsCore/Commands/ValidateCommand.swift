@@ -9,16 +9,16 @@ import Foundation
 /// Runs the standard validation flow for the Swift repository in the current directory.
 ///
 /// Full validation builds every product scheme for every supported platform,
-/// then runs the tests of the product and its local packages. The fast phase
-/// (`--fast`, or `--target`) builds only what a change touched, for macOS, and
-/// runs the tests that depend on it.
+/// then runs the tests of the product and its local packages. By default validation
+/// selects changes against main. Targeted validation checks live edits.
 struct ValidateCommand: AsyncParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "validate",
     abstract: "Run the standard validation flow for a Swift repository.",
     discussion: """
-      Run from the repository root. Builds and tests the Xcode workspace, discovered Swift packages, or \
+      Run from the development worktree root. Checks committed changes against main by default. \
+      Use --full for complete coverage or --target for live edits. Builds and tests the Xcode workspace, discovered Swift packages, or \
       Xcode project, in that order of preference. Package discovery skips paths that Git ignore rules match, \
       even when some of their files are tracked. A product scheme's test plan named "Full Validation" is \
       used when present. Local packages whose tests the product schemes run need no steps of their own; others are \
@@ -30,12 +30,12 @@ struct ValidateCommand: AsyncParsableCommand {
       """
   )
 
-  /// Whether to run the fast phase for uncommitted changes.
-  @Flag(help: "Build only what the uncommitted changes touched, for macOS, and run the tests that depend on it.")
-  var fast = false
+  /// Whether to validate the complete configured scope.
+  @Flag(help: "Build and test the complete configured product, across its supported platforms.")
+  var full = false
 
-  /// Whether to run full validation in the background.
-  @Flag(help: "Run full validation in the background and return; with --fast, only after the fast phase passes. Replaces any background validation still running.")
+  /// Whether to run committed validation in the background.
+  @Flag(help: "Run the selected committed validation scope in the background. Replaces a background run for this checkout.")
   var background = false
 
   /// Whether to report the background validation.
@@ -70,7 +70,7 @@ struct ValidateCommand: AsyncParsableCommand {
   var testPlatforms: String?
 
   /// When to test packages in git submodules.
-  @Option(help: "When to test packages in git submodules (default: changed).")
+  @Option(help: "When to test packages in git submodules: changed, when the branch moved the submodule's commit since main; always; or never (default: changed).")
   var testSubmodules: TestSubmodules?
 
   /// Whether to list the steps instead of running them.
@@ -83,7 +83,19 @@ struct ValidateCommand: AsyncParsableCommand {
   /// Executes validation in the current directory.
   mutating func run() async throws {
     let repoPath = FileManager.default.currentDirectoryPath
-    let file = try await ProjectConfiguration.load(repoPath: repoPath).validate
+    if backgroundWorker {
+      guard let value = ProcessInfo.processInfo.environment[BackgroundLauncher.snapshotVariable],
+        let data = Data(base64Encoded: value)
+      else {
+        throw ToolError("Background validation requires a pinned request.")
+      }
+      let request = try JSONDecoder().decode(ValidationSnapshot.self, from: data)
+      var settings = request.config
+      settings.backgroundWorker = true
+      try ValidationTool(config: settings, repoPath: repoPath).run(workerSnapshot: request)
+      return
+    }
+    let file = try await status || wait ? ValidateFileSettings() : ProjectConfiguration.load(repoPath: repoPath).validate
     try ValidationTool(config: config(repoPath: repoPath, file: file), repoPath: repoPath).run()
   }
 
@@ -94,7 +106,7 @@ struct ValidateCommand: AsyncParsableCommand {
       platforms: platforms, testPlatforms: testPlatforms, testSubmodules: testSubmodules
     )
     resolved.clean = clean
-    resolved.fast = fast
+    resolved.full = full
     resolved.background = background
     resolved.status = status
     resolved.wait = wait

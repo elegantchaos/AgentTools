@@ -2,10 +2,13 @@
 
 - Status: Accepted
 - Date: 2026-10-29
+- Revised: 2026-11-06
 
 ## Decision
 
 AgentTools owns development worktree creation and dependency preparation, including the conventions and setup needed to make a checkout ready for validation. Shared guidance invokes these capabilities rather than independently implementing their rules. Preparation is also available for an existing checkout.
+
+AgentTools also creates and maintains a persistent validation worktree for each development worktree that requests change-scoped or full validation. Only requests from the paired development worktree reuse it. AgentTools owns checkout updates and dependency preparation in that managed worktree. The [Validation Design](../Documentation/Validation%20Design.md) describes the ownership and execution rules.
 
 Preparation is separate from building and testing. Successful preparation is not validation evidence.
 

@@ -38,7 +38,7 @@ struct RepositorySelectionOptions: ParsableArguments {
     let schemes = Self.parseCSV(schemes)
     let packageDirs = Self.parseCSV(packageDirs)
     return ValidationConfig(
-      clean: false, fast: false, background: false, status: false, wait: false, backgroundWorker: false, target: nil,
+      clean: false, full: false, background: false, status: false, wait: false, backgroundWorker: false, target: nil,
       workspaceOverride: workspace, projectOverride: project,
       schemes: schemes.isEmpty ? file.schemes ?? [] : schemes,
       platforms: try Self.parsePlatforms(platforms.map(Self.parseCSV) ?? file.platforms ?? []),

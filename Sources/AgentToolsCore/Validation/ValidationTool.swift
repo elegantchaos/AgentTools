@@ -14,17 +14,22 @@ final class ValidationTool {
   private let config: ValidationConfig
   /// Repository root that validation runs in.
   private let repoPath: String
+  /// Pinned request when running in a managed checkout.
+  private let snapshot: ValidationSnapshot?
   /// Runs and records validation steps.
   private let runner: StepRunner
   /// The sandbox validation runs in, detected when validation starts.
   private var sandbox = EnclosingSandbox(isNested: false)
   /// Discovery results saved between runs, loaded when validation starts.
   private var cache: DiscoveryCache?
+  /// Set when change-scoped selection found nothing to build or test, so the run is not validation evidence.
+  private(set) var foundNothingInScope = false
 
   /// Creates a tool that validates the repository at `repoPath`.
-  init(config: ValidationConfig, repoPath: String) {
+  init(config: ValidationConfig, repoPath: String, snapshot: ValidationSnapshot? = nil) {
     self.config = config
     self.repoPath = repoPath
+    self.snapshot = snapshot
     self.runner = StepRunner(repoPath: repoPath, outputMode: config.outputMode, planOnly: config.planOnly)
   }
 
@@ -41,37 +46,71 @@ final class ValidationTool {
   /// Subprocess runner rooted at the repository.
   private var process: ValidationProcess { runner.process }
 
-  /// State and output of background validation.
+  /// Persistent checkout and state paired with this development worktree.
+  private var checkout: ValidationCheckout { ValidationCheckout(source: process) }
+
+  /// Background status stays outside the checkout being reset.
   private var backgroundStore: BackgroundStatusStore {
-    BackgroundStatusStore(directory: ValidationPaths(repoPath: repoPath).backgroundDirectory)
+    BackgroundStatusStore(directory: checkout.lockPaths.backgroundDirectory)
   }
 
-  /// Runs the requested validation: reports or waits for background validation, runs as a background worker, starts
-  /// background validation, or validates in the foreground, stopping any background validation first.
-  func run() throws {
-    // Line-buffer output, so progress and errors appear in order and promptly when output goes to a pipe or file.
+  /// Runs local targeted validation or dispatches a committed request to its paired checkout.
+  func run(workerSnapshot: ValidationSnapshot? = nil) throws {
     setvbuf(stdout, nil, _IOLBF, 0)
     guard FileManager.default.fileExists(atPath: "\(repoPath)/.git") else {
       throw ToolError("Current working directory is not a git repo root: \(repoPath)")
     }
 
-    if config.status {
-      try reportBackground(waiting: false)
-    } else if config.wait {
-      try reportBackground(waiting: true)
-    } else if config.backgroundWorker {
-      try runWorker()
-    } else if config.background, !config.fast, config.target == nil, !config.planOnly {
-      try startBackground()
-    } else {
-      if !config.planOnly, BackgroundLauncher.supersede(store: backgroundStore) {
-        print("Stopped the background validation that was running, so they do not compete for build directories.")
+    if config.status || config.wait {
+      try reportBackground(waiting: config.wait)
+    } else if let workerSnapshot {
+      try runWorker(workerSnapshot)
+    } else if config.target != nil {
+      guard !config.full, !config.background else {
+        throw ToolError("--target runs locally and cannot be combined with --full or --background.")
       }
       try validate()
-      if config.background, !config.planOnly {
-        try startBackground()
+    } else {
+      try checkout.checkLocation()
+      let request = try ValidationSnapshot(process: process, config: config)
+      if config.planOnly {
+        try validateSnapshot(request)
+        return
+      }
+      // Admission covers only supersession and launch. A foreground run takes the checkout lock before releasing it,
+      // so a later background request returns at once and its worker queues behind this run.
+      let ownership: RepositoryOperationLock
+      do {
+        let admission = try admissionLock()
+        defer { withExtendedLifetime(admission) {} }
+        if BackgroundLauncher.supersede(store: backgroundStore) {
+          print("Stopped the background validation that was running for this checkout.")
+        }
+        if config.background {
+          let status = try BackgroundLauncher.start(repoPath: repoPath, snapshot: request, store: backgroundStore)
+          print("Validation of \(request.commit) started in the background (process \(status.pid)).")
+          print("Check it with `agt validate --status`, or wait with `agt validate --wait`. Output: \(backgroundStore.logPath)")
+          return
+        }
+        ownership = try checkoutLock()
+      }
+      if try !validateSnapshot(request, holding: ownership) {
+        print("Nothing was built or tested, so this is not validation evidence.")
       }
     }
+  }
+
+  /// Serialises background launch and supersession separately from checkout ownership.
+  private func admissionLock() throws -> RepositoryOperationLock {
+    try RepositoryOperationLock(repoPath: repoPath, operation: "validation admission", wait: true, paths: checkout.lockPaths, name: "admission")
+  }
+
+  /// Takes ownership of the paired checkout, waiting for the operation that holds it.
+  private func checkoutLock() throws -> RepositoryOperationLock {
+    try RepositoryOperationLock(
+      repoPath: repoPath, operation: config.planOnly ? "validation planning" : "validation", background: config.backgroundWorker,
+      wait: true, paths: checkout.lockPaths
+    )
   }
 
   /// Resolves dependencies for targeted and full validation without building targets or starting simulators.
@@ -79,9 +118,6 @@ final class ValidationTool {
     setvbuf(stdout, nil, _IOLBF, 0)
     guard FileManager.default.fileExists(atPath: "\(repoPath)/.git") else {
       throw ToolError("Current working directory is not a git repo root: \(repoPath)")
-    }
-    if !config.planOnly, BackgroundLauncher.supersede(store: backgroundStore) {
-      print("Stopped background validation before preparing its dependency directories.")
     }
     let lock = try RepositoryOperationLock(repoPath: repoPath, operation: config.planOnly ? "preparation planning" : "dependency preparation", wait: config.planOnly)
     defer { withExtendedLifetime(lock) {} }
@@ -106,58 +142,57 @@ final class ValidationTool {
     }
   }
 
-  /// Starts full validation in the background, unless the last one passed for the current working tree.
-  private func startBackground() throws {
-    let fingerprint = try WorkingTreeFingerprint.current(using: process)
-    if let last = backgroundStore.load(), last.isCurrentPass(currentFingerprint: fingerprint) {
-      print("Full validation already passed for this working tree; not running it again.")
-      return
+  /// Executes a pinned request while holding ownership of the paired checkout, taking it unless `held` is given.
+  /// Returns `false` when the request had nothing in scope to build or test.
+  @discardableResult
+  private func validateSnapshot(_ request: ValidationSnapshot, holding held: RepositoryOperationLock? = nil) throws -> Bool {
+    try checkout.checkLocation()
+    let lock = try held ?? checkoutLock()
+    defer { withExtendedLifetime(lock) {} }
+    try checkNotSuperseded()
+    try checkout.materialise(commit: request.commit)
+    try checkNotSuperseded()
+
+    var settings = request.config
+    settings.workspaceOverride = try settings.workspaceOverride.map(checkout.snapshotPath)
+    settings.projectOverride = try settings.projectOverride.map(checkout.snapshotPath)
+    settings.packageDirsOverride = try settings.packageDirsOverride?.map(checkout.snapshotPath)
+    // Without a baseline, no submodule can be shown to be unchanged, so test them all.
+    if settings.full, settings.testSubmodules == .changed, request.baseline == nil {
+      settings.testSubmodules = .always
     }
-    if BackgroundLauncher.supersede(store: backgroundStore) {
-      print("Stopped the previous background validation.")
-    }
-    let status = try BackgroundLauncher.start(repoPath: repoPath, fingerprint: fingerprint, store: backgroundStore)
-    print("Full validation started in the background (process \(status.pid)).")
-    print("Check it with `agt validate --status`, or wait for it with `agt validate --wait`. Output: \(backgroundStore.logPath)")
+    let tool = ValidationTool(config: settings, repoPath: checkout.path, snapshot: request)
+    tool.runner.shouldStop = { [unowned self] in !self.ownsBackgroundStatus() }
+    print("Validating commit \(request.commit) in \(checkout.path)")
+    defer { runner.copySummary(from: tool.runner) }
+    try tool.validate()
+    return !tool.foundNothingInScope
   }
 
-  /// Runs full validation as a background worker, recording the result unless a newer validation has replaced it.
-  ///
-  /// The worker leads its own process group, so stopping it stops the tools it runs, and ignores the hang-up signal
-  /// sent when the terminal that started it closes.
-  private func runWorker() throws {
+  /// Runs a pinned background request, recording its result if it still owns the status.
+  private func runWorker(_ request: ValidationSnapshot) throws {
     setpgid(0, 0)
     signal(SIGHUP, SIG_IGN)
-    let store = backgroundStore
-    guard ownsBackgroundStatus() else {
-      print("A newer validation replaced this one before it started.")
-      return
+    // The launcher publishes the PID before the worker can write a result.
+    let deadline = Date.now.addingTimeInterval(10)
+    var published = backgroundStore.load()
+    while published?.isOwned(byToken: workerToken) == true, published?.pid == 0, Date.now < deadline {
+      usleep(20_000)
+      published = backgroundStore.load()
     }
-    let startFingerprint = try WorkingTreeFingerprint.current(using: process)
-    var status = BackgroundStatus(state: .running, pid: getpid(), fingerprint: startFingerprint, started: .now, token: workerToken)
-    try store.save(status)
-    runner.shouldStop = { [unowned self] in !self.ownsBackgroundStatus() }
-
-    var passed = false
+    guard var status = published, status.isOwned(byToken: workerToken), status.pid == getpid() else { return }
     do {
-      try validate()
-      passed = true
+      status.state = try validateSnapshot(request) ? .passed : .empty
     } catch is Superseded {
-      print("A newer validation replaced this one.")
       return
     } catch {
       print("Error: \(error)")
+      status.state = .failed
     }
-
-    guard ownsBackgroundStatus() else {
-      print("A newer validation replaced this one; not recording its result.")
-      return
-    }
-    let endFingerprint = try WorkingTreeFingerprint.current(using: process)
-    status.state = endFingerprint != startFingerprint ? .stale : passed ? .passed : .failed
+    guard ownsBackgroundStatus() else { return }
     status.finished = .now
     status.steps = runner.summaryLines
-    try store.save(status)
+    try backgroundStore.save(status)
   }
 
   /// Runs one planned step. A step that fails because a newer validation interrupted it throws `Superseded`.
@@ -186,6 +221,7 @@ final class ValidationTool {
 
   /// Returns `true` unless this process is a background worker that a newer validation has replaced or cancelled.
   private func ownsBackgroundStatus() -> Bool {
+    if snapshot != nil { return runner.shouldStop?() != true }
     guard config.backgroundWorker else { return true }
     return backgroundStore.load()?.isOwned(byToken: workerToken) ?? false
   }
@@ -216,14 +252,15 @@ final class ValidationTool {
       status.state = .cancelled
     }
 
-    let fingerprint = try WorkingTreeFingerprint.current(using: process)
-    print(status.headline(currentFingerprint: fingerprint))
+    let commit = try ValidationSnapshot.currentCleanCommit(using: process)
+    print(status.headline(currentCommit: commit))
+    print("Commit: \(status.commit)")
     for line in status.steps {
       print(line)
     }
     print("Output: \(store.logPath)")
-    if waiting, !status.isCurrentPass(currentFingerprint: fingerprint) {
-      throw ToolError("Full validation did not pass for the current working tree.")
+    if waiting, let failure = status.waitFailure(currentCommit: commit, requireFull: config.full) {
+      throw ToolError(failure)
     }
   }
 
@@ -254,7 +291,7 @@ final class ValidationTool {
     let project = ValidationDiscovery.project(override: config.projectOverride, repoPath: repoPath)
 
     let container = workspace.map { ["-workspace", $0] } ?? project.map { ["-project", $0] } ?? []
-    if config.fast || config.target != nil {
+    if !config.full || config.target != nil {
       try runFast(container: container, packageDirs: packageDirs, paths: paths)
       return
     }
@@ -345,7 +382,8 @@ final class ValidationTool {
       throw ToolError("No Xcode workspace or project, and no Package.swift, in \(repoPath).")
     }
 
-    let schemes = try listSchemes(container)
+    let swiftPMOnly = container.isEmpty && config.schemes.isEmpty && (config.platforms + config.testPlatforms).allSatisfy { $0 == .macOS }
+    let schemes = try swiftPMOnly ? [] : listSchemes(container)
     let schemeFiles = ValidationDiscovery.fingerprintFiles(repoPath: repoPath).filter { $0.hasSuffix(".xcscheme") }
     func schemeFileHasTests(_ scheme: String) -> Bool {
       guard let file = schemeFiles.first(where: { URL(fileURLWithPath: $0).lastPathComponent == "\(scheme).xcscheme" }),
@@ -432,7 +470,7 @@ final class ValidationTool {
       packages[index].inProduct = product.contains(ValidationPaths.canonical(packages[index].directory))
     }
 
-    let productSchemes = try self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
+    let productSchemes = try swiftPMOnly ? [] : self.productSchemes(container: container, schemes: schemes, rootPackage: rootPackage)
     let schemesWithTests = Set(productSchemes.filter(schemeFileHasTests))
     let productTests = Dictionary(uniqueKeysWithValues: schemesWithTests.compactMap { scheme in schemeTests(named: scheme).map { (scheme, $0) } })
     var testPlans = productTests.compactMapValues(\.testPlan)
@@ -534,10 +572,13 @@ final class ValidationTool {
     return SubmoduleStatus.changedPaths(fromPorcelainZ: result.stdout)
   }
 
-  /// Returns the repository-relative paths of submodules that differ from the commits the repository records, when
-  /// the submodule policy needs them.
+  /// Returns the repository-relative paths of submodules that changed, when the submodule policy needs them. For a
+  /// pinned commit these are the submodules whose commit moved since the baseline; otherwise those with local changes.
   private func changedSubmodulePaths() throws -> Set<String> {
     guard config.testSubmodules == .changed else { return [] }
+    if let snapshot {
+      return Set(try snapshot.changedPaths(using: process))
+    }
     return Set(try changedPaths())
   }
 
@@ -559,7 +600,8 @@ final class ValidationTool {
       }
       scope = FastScope(targets: [target], packages: packages)
     } else {
-      let changed = try changedPaths()
+      guard let snapshot else { throw ToolError("Change-scoped validation requires a pinned request.") }
+      let changed = try snapshot.changedPaths(using: process)
       let repo = ValidationPaths.canonical(repoPath)
       for packageDir in packageDirs {
         let path = ValidationPaths.canonical(packageDir)
@@ -580,6 +622,7 @@ final class ValidationTool {
       print("== Steps")
     }
     guard !scope.isEmpty else {
+      foundNothingInScope = true
       print(scope.assignments.isEmpty ? "No changes to validate." : "Nothing to build or test for these changes.")
       return
     }

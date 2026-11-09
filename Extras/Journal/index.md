@@ -1,5 +1,9 @@
 # Development Journal
 
+- [2026-11-09 Validation Review Fixes](2026-11-09-validation-review-fixes.md) — Empty change scopes no longer count as passes, lock waits are reported, `/private` checkouts work, submodules are tested when the branch moved them and must be pushed, and Swift 6.3 is back in CI.
+
+- [2026-11-06 Validation Worktrees](2026-11-06-validation-worktrees.md) — Proposed paired validation worktrees, commit-based fast scope, and audit of existing decisions.
+
 - [2026-11-05 Lock Release Race](2026-11-05-lock-release-race.md) — Reproduced checkout-lock contention after owner deallocation during parallel process launches; explicit unlocking passes 800 stress iterations and all 275 targeted tests after rebasing onto current main.
 
 - [2026-11-04 AgentTools 3.15.0](2026-11-04-release-3.15.0.md) — Release of `agt vm` and `press` focusing text fields from PR #12; the guest's `agt` needs the new build and fresh grants for focusing.
