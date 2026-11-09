@@ -18,6 +18,7 @@ PR #14 merged and is released as 4.0.0. Return point: merge elegantchaos/Agents#
 | Reuse recorded validation passes | Committed validation skips work whose inputs already passed, as described below, with a decision record. | Planned follow-up. |
 | Retire paired worktrees | A paired validation worktree is removed or pruned when its development worktree goes away. | Open question in the [Validation Design](Extras/Documentation/Validation%20Design.md). |
 | Sandbox setup for paired worktrees | `agt worktree create` and `agt prepare` create and prepare the paired worktree, so the first committed validation in a sandbox does not need Git metadata writes. | Candidate, from the PR #14 review. |
+| Record iOS Simulator videos | Record a named scenario on an explicitly selected simulator, finalize a playable clip, and report its path. | Candidate. Start with a manual capture, then consider how recording could accompany the existing UI test lane. See [Hughes’s recording skill](https://github.com/kylehughes/agent-plugins-for-making-good-software/blob/ea711c19c39c4cdaee5943e5a7d3065cb2ae2426/plugins/apple-platform/skills/recording-ios-simulator-videos/SKILL.md). |
 
 ## Follow-Up: Reuse Recorded Validation Passes
 

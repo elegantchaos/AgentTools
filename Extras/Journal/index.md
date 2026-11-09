@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-09 Simulator Video Candidate](2026-11-09-simulator-video-candidate.md) — Captured a future AgentTools candidate for playable iOS Simulator recordings, with Hughes’s skill as prior art.
+
 - [2026-11-09 AgentTools 4.0.0](2026-11-09-release-4.0.0.md) — Major release of the paired-worktree validation modes from PR #14 and the lock release fix from PR #13; bare `agt validate` is now change-scoped and `--fast` is gone.
 
 - [2026-11-09 Validation Review Fixes](2026-11-09-validation-review-fixes.md) — Empty change scopes no longer count as passes, lock waits are reported, `/private` checkouts work, submodules are tested when the branch moved them and must be pushed, and Swift 6.3 is back in CI.

@@ -1,0 +1,3 @@
+# Simulator Video Candidate
+
+Sam asked to record simulator video capture as future AgentTools work. The [roadmap](../../ROADMAP.md#current-and-parked-work) lists it as a candidate. Start with a named manual capture on an explicitly selected iOS simulator. Check that the recorder shuts down cleanly and the result actually shows the scenario. Use [Hughes’s recording skill](https://github.com/kylehughes/agent-plugins-for-making-good-software/blob/ea711c19c39c4cdaee5943e5a7d3065cb2ae2426/plugins/apple-platform/skills/recording-ios-simulator-videos/SKILL.md) as prior art for timing and artifact validation. Consider test-lane integration after the manual path works.
