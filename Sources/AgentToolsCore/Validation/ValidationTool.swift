@@ -157,7 +157,8 @@ final class ValidationTool {
     settings.workspaceOverride = try settings.workspaceOverride.map(checkout.snapshotPath)
     settings.projectOverride = try settings.projectOverride.map(checkout.snapshotPath)
     settings.packageDirsOverride = try settings.packageDirsOverride?.map(checkout.snapshotPath)
-    if settings.full, settings.testSubmodules == .changed {
+    // Without a baseline, no submodule can be shown to be unchanged, so test them all.
+    if settings.full, settings.testSubmodules == .changed, request.baseline == nil {
       settings.testSubmodules = .always
     }
     let tool = ValidationTool(config: settings, repoPath: checkout.path, snapshot: request)
@@ -571,10 +572,13 @@ final class ValidationTool {
     return SubmoduleStatus.changedPaths(fromPorcelainZ: result.stdout)
   }
 
-  /// Returns the repository-relative paths of submodules that differ from the commits the repository records, when
-  /// the submodule policy needs them.
+  /// Returns the repository-relative paths of submodules that changed, when the submodule policy needs them. For a
+  /// pinned commit these are the submodules whose commit moved since the baseline; otherwise those with local changes.
   private func changedSubmodulePaths() throws -> Set<String> {
     guard config.testSubmodules == .changed else { return [] }
+    if let snapshot {
+      return Set(try snapshot.changedPaths(using: process))
+    }
     return Set(try changedPaths())
   }
 

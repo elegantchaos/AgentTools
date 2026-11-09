@@ -22,16 +22,30 @@ struct ValidationSnapshot: Codable {
     guard try Self.currentCleanCommit(using: process) == commit else {
       throw ToolError("Commit your changes, including submodule changes, before validation. Use --target to check live edits.")
     }
+    try Self.checkSubmoduleCommitsArePushed(using: process)
     self.commit = commit
     self.config = config
-    if config.full {
+    // Full validation uses the baseline only to find submodules this branch moved, so it can do without one.
+    let candidates = ["refs/heads/main", "refs/remotes/origin/main"]
+    if let ref = try candidates.first(where: { try process.capture(["git", "rev-parse", "--verify", "--quiet", $0]).status == 0 }) {
+      baseline = try Self.git(["merge-base", ref, commit], using: process)
+    } else if config.full {
       baseline = nil
     } else {
-      let candidates = ["refs/heads/main", "refs/remotes/origin/main"]
-      guard let ref = try candidates.first(where: { try process.capture(["git", "rev-parse", "--verify", "--quiet", $0]).status == 0 }) else {
-        throw ToolError("Change-scoped validation needs a local main or origin/main branch to compare against. Use --full or --target instead.")
-      }
-      baseline = try Self.git(["merge-base", ref, commit], using: process)
+      throw ToolError("Change-scoped validation needs a local main or origin/main branch to compare against. Use --full or --target instead.")
+    }
+  }
+
+  /// Refuses submodule commits that no remote-tracking branch contains. The validation worktree fetches submodules
+  /// from their remotes, so it cannot reproduce a commit that exists only in the development worktree.
+  static func checkSubmoduleCommitsArePushed(using process: ValidationProcess) throws {
+    let unpushed = try git(
+      ["submodule", "foreach", "--quiet", "--recursive", #"git branch -r --contains "$sha1" 2>/dev/null | grep -q . || echo "$displaypath""#],
+      using: process
+    )
+    guard unpushed.isEmpty else {
+      let paths = unpushed.split(separator: "\n").joined(separator: ", ")
+      throw ToolError("Push the committed changes in these submodules before validation, so the validation worktree can fetch them: \(paths). Use --target to check them locally.")
     }
   }
 

@@ -222,7 +222,7 @@ agt validate --full                  # run the complete configured plan
 
 Bare `agt validate` uses the diff from the merge base with local `main` (falling back to `origin/main`) to the requested commit. It builds affected targets for macOS and runs dependent tests. A changed test selects its test target. Package manifests, dependency resolutions and submodule updates widen selection to the package. App sources and Xcode build inputs outside packages select the product scheme. With no relevant changes, nothing runs.
 
-Change-scoped and full validation require a clean checkout, including submodules. Each development checkout gets a persistent detached validation worktree under `.build/agt-validation/`. AgentTools updates only that paired checkout and reuses its build outputs. Keep the repository's `.build` directory ignored. The paired worktree's Git metadata and dependencies must be writable under the caller's permissions.
+Change-scoped and full validation require a clean checkout, including submodules, and every submodule commit must be on a remote branch, since the validation worktree fetches submodules from their remotes. Pushing to a working branch, such as `integration/<app>`, is enough. Each development checkout gets a persistent detached validation worktree under `.build/agt-validation/`. AgentTools updates only that paired checkout and reuses its build outputs. Keep the repository's `.build` directory ignored. The paired worktree's Git metadata and dependencies must be writable under the caller's permissions.
 
 #### Background validation
 
@@ -244,7 +244,7 @@ Full validation builds the product first, then tests it:
 
 The product is the Xcode workspace in the repository root, or else its Xcode project, or else its root `Package.swift`. The default product scheme is the one named after the repository, or the root package's scheme when there is no workspace or project. For an Xcode product, the platforms are those its schemes support; a Swift package product is built for macOS unless configured otherwise.
 
-A local Swift package is part of the product when the product uses it: the workspace lists it, a project references it as a local package, it is the root package of a Swift package product, or it is a local path dependency of one of those. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so full validation includes eligible submodule packages by default.
+A local Swift package is part of the product when the product uses it: the workspace lists it, a project references it as a local package, it is the root package of a Swift package product, or it is a local path dependency of one of those. Other packages in the repository, such as examples and test fixtures, are not tested. Packages in git submodules are usually standalone products with their own tests, so by default full validation tests them only when the branch has moved the submodule's commit since the merge base with `main`, or with `origin/main` when there is no local `main`. Without either, it tests them all.
 
 The fastest arrangement is for the product scheme to run every package's tests itself, so the whole product builds once per platform and Xcode runs all the tests together. When a product scheme has a test plan named `Full Validation`, validation runs that plan (`-testPlan "Full Validation"`), leaving the scheme's default plan free for quicker runs in Xcode; otherwise it runs the scheme's default tests. A test plan or scheme lists a package's tests by its `container:` path, and Xcode runs them only when the package is a member of the workspace, skipping them without any message otherwise.
 
@@ -279,7 +279,7 @@ Projects configure formatting and validation in `.agt/config.json`, committed, w
 - `schemes` (`--schemes`): the schemes that build the product.
 - `platforms` (`--platforms`): the platforms to build for: `macOS`, `iOS`, `tvOS`, `watchOS`, `visionOS`.
 - `testPlatforms` (`--test-platforms`): the platforms to test on; defaults to the build platforms. `["macOS"]` avoids simulators.
-- `testSubmodules` (`--test-submodules`): when to test packages in Git submodules. Full validation includes eligible submodule packages with `always` or `changed` (the default). `never` omits separate submodule test steps.
+- `testSubmodules` (`--test-submodules`): when to test packages in Git submodules: `changed` (the default) when the branch moved the submodule's commit, `always`, or `never`, which omits separate submodule test steps.
 - `excludePackages`: packages whose tests never run separately, by package name. The coverage check does not report them.
 
 See what validation would do without running anything: every local package, with how its tests run or why they do not, then each step with its exact command:

@@ -70,7 +70,7 @@ struct ValidateCommand: AsyncParsableCommand {
   var testPlatforms: String?
 
   /// When to test packages in git submodules.
-  @Option(help: "Submodule test policy. Full validation includes eligible submodules with changed or always (default: changed).")
+  @Option(help: "When to test packages in git submodules: changed, when the branch moved the submodule's commit since main; always; or never (default: changed).")
   var testSubmodules: TestSubmodules?
 
   /// Whether to list the steps instead of running them.

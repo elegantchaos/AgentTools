@@ -271,6 +271,66 @@ struct BackgroundValidationTests {
     #expect(try String(contentsOf: checkout.appendingPathComponent("Tracked.swift"), encoding: .utf8) == "let a = 1\n")
   }
 
+  @Test func committedValidationRefusesDirtyAndUnpushedSubmodules() throws {
+    let (root, remote) = try makeRepoWithSubmodule()
+    defer {
+      try? FileManager.default.removeItem(at: root)
+      try? FileManager.default.removeItem(at: remote)
+    }
+    let source = ValidationProcess(workingDirectory: root.path)
+    let config = try ValidateCommand.parse(["--full"]).config(repoPath: root.path)
+    let sub = root.appendingPathComponent("Sub")
+    #expect(throws: Never.self) { try ValidationSnapshot(process: source, config: config) }
+
+    try "dirty\n".write(to: sub.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
+    #expect(throws: ToolError.self) { try ValidationSnapshot(process: source, config: config) }
+
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qam", "Local only"], in: sub)
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qam", "Bump"], in: root)
+    let unpushed = #expect(throws: ToolError.self) { try ValidationSnapshot(process: source, config: config) }
+    #expect(unpushed?.description.contains("Push the committed changes in these submodules") == true)
+    #expect(unpushed?.description.contains("Sub") == true)
+
+    _ = try git(["push", "--quiet", "origin", "HEAD:refs/heads/integration/app"], in: sub)
+    #expect(throws: Never.self) { try ValidationSnapshot(process: source, config: config) }
+  }
+
+  @Test func fullValidationFindsSubmodulesTheBranchMoved() throws {
+    let (root, remote) = try makeRepoWithSubmodule()
+    defer {
+      try? FileManager.default.removeItem(at: root)
+      try? FileManager.default.removeItem(at: remote)
+    }
+    let source = ValidationProcess(workingDirectory: root.path)
+    let config = try ValidateCommand.parse(["--full"]).config(repoPath: root.path)
+    _ = try git(["switch", "--quiet", "-c", "feature/test"], in: root)
+    #expect(try ValidationSnapshot(process: source, config: config).changedPaths(using: source).isEmpty)
+
+    let sub = root.appendingPathComponent("Sub")
+    try "two\n".write(to: sub.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qam", "Change"], in: sub)
+    _ = try git(["push", "--quiet", "origin", "HEAD:refs/heads/main"], in: sub)
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qam", "Bump"], in: root)
+    #expect(try ValidationSnapshot(process: source, config: config).changedPaths(using: source) == ["Sub"])
+  }
+
+  /// Creates a repository with a submodule `Sub` cloned from a bare remote, both at a pushed commit.
+  private func makeRepoWithSubmodule() throws -> (root: URL, remote: URL) {
+    let remote = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AgentTools-SubRemote-\(UUID().uuidString).git")
+    _ = try git(["init", "--quiet", "--bare", "--initial-branch=main", remote.path], in: URL(fileURLWithPath: NSTemporaryDirectory()))
+    let seed = try makeRepo()
+    defer { try? FileManager.default.removeItem(at: seed) }
+    try "one\n".write(to: seed.appendingPathComponent("file.txt"), atomically: true, encoding: .utf8)
+    _ = try git(["add", "file.txt"], in: seed)
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "Seed"], in: seed)
+    _ = try git(["push", "--quiet", remote.path, "HEAD:refs/heads/main"], in: seed)
+
+    let root = try makeRepo()
+    _ = try git(["-c", "protocol.file.allow=always", "submodule", "--quiet", "add", remote.path, "Sub"], in: root)
+    _ = try git(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "Add submodule"], in: root)
+    return (root, remote)
+  }
+
   /// Creates a git repository with one committed file and an ignore rule for logs.
   private func makeRepo() throws -> URL {
     let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AgentTools-Background-\(UUID().uuidString)")

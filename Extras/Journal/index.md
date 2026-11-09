@@ -1,6 +1,6 @@
 # Development Journal
 
-- [2026-11-09 Validation Review Fixes](2026-11-09-validation-review-fixes.md) — Empty change scopes no longer count as passes, lock waits are reported, `/private` checkouts work, risky paths are tested and Swift 6.3 is back in CI.
+- [2026-11-09 Validation Review Fixes](2026-11-09-validation-review-fixes.md) — Empty change scopes no longer count as passes, lock waits are reported, `/private` checkouts work, submodules are tested when the branch moved them and must be pushed, and Swift 6.3 is back in CI.
 
 - [2026-11-06 Validation Worktrees](2026-11-06-validation-worktrees.md) — Proposed paired validation worktrees, commit-based fast scope, and audit of existing decisions.
 
