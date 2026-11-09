@@ -1,0 +1,10 @@
+{
+    "platforms": ["macOS"],
+    "compilers": ["swift62", "swift63", "swift64"],
+    "configurations": ["release"],
+    "test": true,
+    "header": false,
+    "firstlast": false,
+    "uploadLogs": true,
+    "postSlackNotification": false
+}
