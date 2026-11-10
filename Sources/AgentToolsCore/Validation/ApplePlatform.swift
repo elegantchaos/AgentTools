@@ -39,6 +39,17 @@ enum ApplePlatform: String, Codable, CaseIterable {
     self == .macOS ? nil : "\(rawValue) Simulator"
   }
 
+  /// The name of this platform's simulator SDK, as `xcrun --sdk` takes it, or `nil` for macOS.
+  var simulatorSDK: String? {
+    switch self {
+      case .macOS: nil
+      case .iOS: "iphonesimulator"
+      case .tvOS: "appletvsimulator"
+      case .watchOS: "watchsimulator"
+      case .visionOS: "xrsimulator"
+    }
+  }
+
   /// The device families of the simulators kept for testing on this platform, most preferred first. A test device
   /// is named "Test", its family, and its OS version, such as `Test iPhone 27.2`.
   var testDeviceFamilies: [String] {

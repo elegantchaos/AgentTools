@@ -88,6 +88,26 @@ struct TestSimulatorTests {
     #expect(try TestSimulators.newDevice(for: platform, runtimesJSON: runtimes, devicesJSON: #"{"devices": {}}"#) == expected)
   }
 
+  @Test func runtimesNewerThanTheSelectedXcodesSDKAreIgnored() throws {
+    #expect(
+      try TestSimulators.newestOS(runtimesJSON: runtimes, sdkVersions: [.iOS: "27.1", .tvOS: "26.0"])
+        == [.iOS: "27.0", .watchOS: "27.0"]
+    )
+  }
+
+  @Test func aNewTestDeviceUsesTheNewestRuntimeTheSDKSupports() throws {
+    #expect(
+      try TestSimulators.newDevice(for: .iOS, runtimesJSON: runtimes, devicesJSON: #"{"devices": {}}"#, sdkVersions: [.iOS: "27.1"])
+        == TestSimulators.NewDevice(
+          name: "Test iPhone 27.0", deviceType: "iPhone-17-Pro-Max", deviceTypeName: "iPhone 17 Pro Max", runtime: "iOS-27-0", runtimeName: "iOS 27.0")
+    )
+  }
+
+  @Test(arguments: [("27.2", "27.2", true), ("27.2.1", "27.2", true), ("27.3", "27.2", false), ("26.5", "27.2", true), ("28.0", "27.2", false)])
+  func aRuntimeIsSupportedUpToTheSDKVersion(runtime: String, sdk: String, isSupported: Bool) {
+    #expect(TestSimulators.version(runtime, isSupportedBy: sdk) == isSupported)
+  }
+
   @Test func anExistingTestDeviceIsNotCreatedAgain() throws {
     let devices = #"{"devices": {"iOS-27-2": [{"name": "Test iPhone 27.2"}]}}"#
     #expect(try TestSimulators.newDevice(for: .iOS, runtimesJSON: runtimes, devicesJSON: devices) == nil)

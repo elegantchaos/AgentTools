@@ -153,6 +153,13 @@ enum TestSimulators {
     string.split(separator: ".").compactMap { Int($0) }
   }
 
+  /// Whether a runtime version is one an SDK version can test: no newer, comparing only as many components as the
+  /// SDK version has, so a 27.2.1 runtime counts as 27.2.
+  static func version(_ runtime: String, isSupportedBy sdk: String) -> Bool {
+    let limit = version(sdk)
+    return !limit.lexicographicallyPrecedes(version(runtime).prefix(limit.count))
+  }
+
   /// Returns the simulator platforms among `platforms` whose chosen simulator is not a test device for the newest OS.
   static func missingTestDevices(for platforms: [ApplePlatform], in simulators: [ApplePlatform: SimulatorChoice]) -> [ApplePlatform] {
     platforms.filter { platform in simulators[platform].map { !$0.isTestDevice } ?? false }
@@ -164,19 +171,20 @@ enum TestSimulators {
     return Set(devices.devices.values.joined().compactMap(\.udid))
   }
 
-  /// Returns the OS version of each platform's newest available runtime.
-  static func newestOS(runtimesJSON: String) throws -> [ApplePlatform: String] {
+  /// Returns the OS version of each platform's newest available runtime that the selected Xcode's simulator SDK
+  /// can test. `sdkVersions` gives each SDK's version; a platform without one is not limited.
+  static func newestOS(runtimesJSON: String, sdkVersions: [ApplePlatform: String] = [:]) throws -> [ApplePlatform: String] {
     var newest: [ApplePlatform: String] = [:]
     for platform in ApplePlatform.allCases {
-      newest[platform] = try newestRuntime(for: platform, runtimesJSON: runtimesJSON)?.version
+      newest[platform] = try newestRuntime(for: platform, runtimesJSON: runtimesJSON, sdkVersion: sdkVersions[platform])?.version
     }
     return newest
   }
 
-  /// Returns the preferred test device for `platform` on its newest available runtime, or `nil` when no runtime
-  /// supports one, or when a simulator with its name already exists in `devicesJSON`.
-  static func newDevice(for platform: ApplePlatform, runtimesJSON: String, devicesJSON: String) throws -> NewDevice? {
-    guard let runtime = try newestRuntime(for: platform, runtimesJSON: runtimesJSON),
+  /// Returns the preferred test device for `platform` on its newest available runtime that `sdkVersions` allows, or
+  /// `nil` when no runtime supports one, or when a simulator with its name already exists in `devicesJSON`.
+  static func newDevice(for platform: ApplePlatform, runtimesJSON: String, devicesJSON: String, sdkVersions: [ApplePlatform: String] = [:]) throws -> NewDevice? {
+    guard let runtime = try newestRuntime(for: platform, runtimesJSON: runtimesJSON, sdkVersion: sdkVersions[platform]),
       let family = platform.testDeviceFamilies.first
     else { return nil }
     let types = deviceTypes(for: family)
@@ -188,11 +196,15 @@ enum TestSimulators {
     return NewDevice(name: name, deviceType: deviceType.identifier, deviceTypeName: deviceType.name, runtime: runtime.identifier, runtimeName: runtime.name)
   }
 
-  /// Returns the newest available runtime for `platform`.
-  private static func newestRuntime(for platform: ApplePlatform, runtimesJSON: String) throws -> Runtime? {
+  /// Returns the newest available runtime for `platform`, no newer than `sdkVersion` when one is given.
+  ///
+  /// A runtime newer than the selected Xcode's SDK comes from another Xcode, and its system services can fail
+  /// under the selected Xcode's tools.
+  private static func newestRuntime(for platform: ApplePlatform, runtimesJSON: String, sdkVersion: String?) throws -> Runtime? {
     let names = platform == .visionOS ? ["visionOS", "xrOS"] : [platform.rawValue]
     return try JSONDecoder().decode(RuntimeList.self, from: Data(runtimesJSON.utf8)).runtimes
       .filter { $0.isAvailable && names.contains($0.platform) }
+      .filter { runtime in sdkVersion.map { version(runtime.version, isSupportedBy: $0) } ?? true }
       .max { version($0.version).lexicographicallyPrecedes(version($1.version)) }
   }
 }

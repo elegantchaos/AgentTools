@@ -728,7 +728,8 @@ final class ValidationTool {
 
   /// Returns the simulator that runs tests on each simulator platform, choosing from those available to a scheme.
   ///
-  /// When a platform has no test device for its newest installed runtime, one is created, and the destinations are
+  /// The newest runtime is the newest installed one that the selected Xcode's simulator SDK can test.
+  /// When a platform has no test device for that runtime, one is created, and the destinations are
   /// listed again. Xcode can list destinations before it has loaded its simulators, so a list missing any of
   /// `platforms` is retried once and never cached.
   private func simulators(container: [String], scheme: String, platforms: [ApplePlatform], paths: ValidationPaths) throws -> [ApplePlatform: SimulatorChoice] {
@@ -741,7 +742,8 @@ final class ValidationTool {
     }
     return try discovered("simulators \(container.joined(separator: " ")) \(scheme)", isComplete: isCurrent) {
       let runtimes = try process.capture(["xcrun", "simctl", "list", "-j", "runtimes"])
-      let newestOS = runtimes.status == 0 ? (try? TestSimulators.newestOS(runtimesJSON: runtimes.stdout)) ?? [:] : [:]
+      let sdkVersions = try simulatorSDKVersions(for: simulatorPlatforms)
+      let newestOS = runtimes.status == 0 ? (try? TestSimulators.newestOS(runtimesJSON: runtimes.stdout, sdkVersions: sdkVersions)) ?? [:] : [:]
       func list() throws -> [ApplePlatform: SimulatorChoice] {
         var simulators: [ApplePlatform: SimulatorChoice] = [:]
         for _ in 1...2 where !hasAll(simulators) {
@@ -759,17 +761,30 @@ final class ValidationTool {
       guard !missing.isEmpty, runtimes.status == 0 else { return simulators }
       var created = false
       for platform in missing {
-        created = try createTestDevice(for: platform, runtimesJSON: runtimes.stdout) || created
+        created = try createTestDevice(for: platform, runtimesJSON: runtimes.stdout, sdkVersions: sdkVersions) || created
       }
       return created ? try list() : simulators
     }
   }
 
-  /// Creates the test device for `platform`'s newest runtime, returning `true` when it was created. Failures are
-  /// reported, and validation continues with the simulators that exist.
-  private func createTestDevice(for platform: ApplePlatform, runtimesJSON: String) throws -> Bool {
+  /// Returns the version of the selected Xcode's simulator SDK for each of `platforms`, leaving out any it cannot
+  /// report, so test simulators never use a runtime newer than the tools that drive them.
+  private func simulatorSDKVersions(for platforms: [ApplePlatform]) throws -> [ApplePlatform: String] {
+    var versions: [ApplePlatform: String] = [:]
+    for platform in platforms {
+      guard let sdk = platform.simulatorSDK else { continue }
+      let result = try process.capture(["xcrun", "--sdk", sdk, "--show-sdk-version"])
+      let version = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+      if result.status == 0, !version.isEmpty { versions[platform] = version }
+    }
+    return versions
+  }
+
+  /// Creates the test device for `platform`'s newest runtime that `sdkVersions` allows, returning `true` when it was
+  /// created. Failures are reported, and validation continues with the simulators that exist.
+  private func createTestDevice(for platform: ApplePlatform, runtimesJSON: String, sdkVersions: [ApplePlatform: String]) throws -> Bool {
     let devices = try process.capture(["xcrun", "simctl", "list", "-j", "devices"])
-    guard devices.status == 0, let device = try? TestSimulators.newDevice(for: platform, runtimesJSON: runtimesJSON, devicesJSON: devices.stdout) else {
+    guard devices.status == 0, let device = try? TestSimulators.newDevice(for: platform, runtimesJSON: runtimesJSON, devicesJSON: devices.stdout, sdkVersions: sdkVersions) else {
       return false
     }
     let result = try process.capture(device.arguments)
