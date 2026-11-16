@@ -23,6 +23,6 @@ The command was replayed on a scratch clone of Bookish at the commit before PR #
 
 ## Open
 
-- The `baseline:records` skill has no rule yet about repairing links in historical records, so there is nowhere to name the command. Adding the rule is a guidance change for Sam to confirm, and the Agents repository can only depend on the command once it is released.
+- The rule for links in historical records is in [Agents #47](https://github.com/elegantchaos/Agents/pull/47), which now names the command. It merges after this is released, since the Agents repository can only depend on a released `agt`.
 - Historical folders are the two defaults or the paths given on the command line. A project with other locations has no configuration key for them.
 - Permalinks are GitHub only. A repository whose `origin` is elsewhere can check links but not repair them.
