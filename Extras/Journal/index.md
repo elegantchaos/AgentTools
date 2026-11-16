@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-16 PR #17 Review](2026-11-16-pr17-review.md) — Needs rework: six reproduced defects in history selection, Markdown parsing and submodule indexing; existing full-validation evidence inspected, review report recorded, no implementation changes.
+
 - [2026-11-16 Markdown Link Check And History Repair](2026-11-16-markdown-links.md) — `agt links` reports broken relative Markdown links, and `--fix-history` turns broken links in journal entries and reviews into permalinks at the commit that introduced them; replayed on Bookish, it matched the prototype used for PR #140.
 
 - [2026-11-10 Simulator Runtimes Follow The Selected Xcode](2026-11-10-simulator-sdk-runtime.md) — Test simulators no longer use a runtime newer than the selected Xcode's simulator SDK.
