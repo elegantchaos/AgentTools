@@ -125,6 +125,31 @@ struct LinksToolTests {
       ])
   }
 
+  /// When a record moved and its links were respelled for the new folder after the target had gone, the link is
+  /// still recognised in older revisions by the target it named.
+  @Test func respelledLinkIsRecognisedByItsTarget() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("Extras/Decisions/0003-old.md", "Decision")
+    // Enough unchanged text for Git to follow the record through its move.
+    let body = String(repeating: "A finding that the review recorded.\n", count: 10)
+    try fixture.write("Extras/Reviews/Review.md", body + "[decision](../Decisions/0003-old.md#rules)")
+    let introduced = try fixture.commit()
+    try fixture.git(["rm", "--quiet", "Extras/Decisions/0003-old.md"])
+    try fixture.commit()
+    try fixture.git(["rm", "--quiet", "Extras/Reviews/Review.md"])
+    try fixture.write("Extras/Reviews/Archive/Review.md", body + "[decision](../../Decisions/0003-old.md#rules)")
+    try fixture.commit()
+
+    let report = try fixture.tool.fixHistory(paths: [], dryRun: false)
+    #expect(
+      report.repairs.map(\.outcome) == [
+        .permalink(
+          url: "https://github.com/example/project/blob/\(introduced)/Extras/Decisions/0003-old.md#rules",
+          resolution: LinkResolution(commit: introduced, path: "Extras/Decisions/0003-old.md", isDirectory: false, basis: .introduced))
+      ])
+  }
+
   /// A link written after its target had gone uses the last commit that held the target, and says so.
   @Test func linkThatNeverResolvedFallsBackToTheCommitBeforeRemoval() throws {
     let fixture = try LinkFixture()

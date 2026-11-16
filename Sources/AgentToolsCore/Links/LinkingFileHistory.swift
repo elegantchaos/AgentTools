@@ -8,17 +8,19 @@
 ///
 /// Built from `git log --follow` on the current branch, so renames of the document are followed and only commits
 /// reachable from HEAD are offered. Needs full history: the caller refuses shallow clones before building one.
-/// Link destinations found at each revision are cached, so resolving many links in one document reads each
-/// revision once.
+/// The links found at each revision are cached, so resolving many links in one document reads each revision once.
 struct LinkingFileHistory {
   /// Queries the checkout's Git history.
   private let git: GitQuery
 
+  /// Root-relative path of the document now.
+  private let file: String
+
   /// The document's revisions, oldest first.
   private let revisions: [Revision]
 
-  /// Link destinations in the document at each revision, by index into `revisions`.
-  private var destinations: [Int: Set<String>] = [:]
+  /// The document's links at each revision, by index into `revisions`.
+  private var links: [Int: RevisionLinks] = [:]
 
   /// Reads the history of `file`, a root-relative path, in the checkout `git` queries.
   init(file: String, git: GitQuery) throws {
@@ -35,18 +37,27 @@ struct LinkingFileHistory {
       current = renamedFrom ?? revisions[revisions.count - 1].path
     }
     self.git = git
+    self.file = file
     self.revisions = revisions.reversed()
   }
 
   /// Returns the revision `link` should point at, or `nil` when its target never existed.
   ///
   /// Prefers the first commit where the document carried the link and the target existed at the path the link then
-  /// resolved to. Otherwise falls back to the parent of the commit that removed the target.
+  /// resolved to. The document carried the link when it held the same destination text, which may have named a
+  /// different path if the document has moved, or a link to the same path under another spelling, as happens when
+  /// links are adjusted for a move. Otherwise falls back to the parent of the commit that removed the target.
   mutating func resolution(for link: MarkdownLink) throws -> LinkResolution? {
+    let currentPath = link.repositoryPath(from: file)
     for (index, revision) in revisions.enumerated() {
-      guard try destinations(at: index).contains(link.destination), let path = link.repositoryPath(from: revision.path) else { continue }
-      if let isDirectory = try kind(of: path, at: revision.commit) {
-        return LinkResolution(commit: revision.commit, path: path, isDirectory: isDirectory, basis: .introduced)
+      let links = try links(at: index)
+      var candidates: [String] = []
+      if links.destinations.contains(link.destination), let path = link.repositoryPath(from: revision.path) { candidates.append(path) }
+      if let currentPath, links.paths.contains(currentPath) { candidates.append(currentPath) }
+      for path in candidates {
+        if let isDirectory = try kind(of: path, at: revision.commit) {
+          return LinkResolution(commit: revision.commit, path: path, isDirectory: isDirectory, basis: .introduced)
+        }
       }
     }
     var tried: Set<String> = []
@@ -62,14 +73,15 @@ struct LinkingFileHistory {
     return nil
   }
 
-  /// Returns the link destinations in the document at a revision, reading it on first use.
-  private mutating func destinations(at index: Int) throws -> Set<String> {
-    if let known = destinations[index] { return known }
+  /// Returns the document's links at a revision, reading it on first use.
+  private mutating func links(at index: Int) throws -> RevisionLinks {
+    if let known = links[index] { return known }
     let revision = revisions[index]
     let text = try git.outputIfSuccessful(["show", "\(revision.commit):\(revision.path)"]) ?? ""
-    let found = Set(MarkdownLinkScanner.links(in: text).map(\.destination))
-    destinations[index] = found
-    return found
+    let found = MarkdownLinkScanner.links(in: text)
+    let result = RevisionLinks(destinations: Set(found.map(\.destination)), paths: Set(found.compactMap { $0.repositoryPath(from: revision.path) }))
+    links[index] = result
+    return result
   }
 
   /// Returns whether `path` is a directory in `commit`, or `nil` when nothing exists there.
@@ -87,5 +99,16 @@ extension LinkingFileHistory {
 
     /// Root-relative path of the document in that commit.
     let path: String
+  }
+}
+
+extension LinkingFileHistory {
+  /// The links the document held at one revision.
+  private struct RevisionLinks {
+    /// Their destinations as written.
+    let destinations: Set<String>
+
+    /// The root-relative paths they named from the document's location at that revision.
+    let paths: Set<String>
   }
 }

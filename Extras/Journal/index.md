@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-16 Markdown Link Check And History Repair](2026-11-16-markdown-links.md) — `agt links` reports broken relative Markdown links, and `--fix-history` turns broken links in journal entries and reviews into permalinks at the commit that introduced them; replayed on Bookish, it matched the prototype used for PR #140.
+
 - [2026-11-10 Simulator Runtimes Follow The Selected Xcode](2026-11-10-simulator-sdk-runtime.md) — Test simulators no longer use a runtime newer than the selected Xcode's simulator SDK.
 
 - [2026-11-09 AgentTools 4.0.0](2026-11-09-release-4.0.0.md) — Major release of the paired-worktree validation modes from PR #14 and the lock release fix from PR #13; bare `agt validate` is now change-scoped and `--fast` is gone.
