@@ -23,7 +23,7 @@ agt <command>
 
 Show the installed version with `agt --version`.
 
-`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure`, `agt calendar` and `agt ui` run anywhere. `agt vm` reads its settings from the repository it runs in, when there is one, and otherwise from your own configuration.
+`agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure`, `agt calendar` and `agt ui` run anywhere. `agt links` runs anywhere inside a Git checkout. `agt vm` reads its settings from the repository it runs in, when there is one, and otherwise from your own configuration.
 
 ### Refresh
 
@@ -173,6 +173,29 @@ Settings come from the `vm` key of the project's `.agt/local/config.json` and `.
 ```
 
 These are the defaults, except `scheme`, which defaults to the first of `validate.schemes`. Relative paths are relative to the repository, and `~` to your home. ssh and scp use only the configured key and known hosts file, never `~/.ssh`, in batch mode. Clones share the base image's host key but can reuse each other's addresses, so `start` forgets any key recorded for the new clone's address in that file, and the clone's key is accepted on first contact. An agent's sandbox blocks tart and ssh to the clone, so run `agt vm` outside it.
+
+### Links
+
+Check the relative links in a repository's tracked Markdown files:
+
+```shell
+agt links
+```
+
+Each link whose target does not exist is reported on one line as `file:line` with the destination as written, and the command exits non-zero when there are any. Paths are compared with Git's own listing, including inside checked-out submodules, so a link that differs from its target only by case is broken, as it would be on GitHub. Markdown escapes, character references and percent-encoded paths are decoded, and a leading `/` means the repository root. Inline links and reference definitions can continue onto the next line. Links in fenced code blocks and code spans, including multiline spans, absolute URLs, `mailto:` links and same-document anchors are ignored. A link into a submodule that is not checked out is listed as unverified and does not fail the check.
+
+When a change moves or removes a file, journal entries and reviews that linked to it should keep showing what their author cited. Repair them with:
+
+```shell
+agt links --fix-history --dry-run
+agt links --fix-history
+```
+
+This rewrites broken links only in historical records: the documents under `Extras/Journal` and `Extras/Reviews`, or under the files and folders named after the options. Each broken link becomes a GitHub permalink, `https://github.com/<owner>/<repo>/blob/<commit>/<path>`, with the owner and repository taken from the `origin` remote. Any `#anchor` is kept, and the link text is unchanged.
+
+The commit is the first one on the current branch where the document carried the link and the target existed. The document's renames are followed, and the target is looked for where the link pointed from the document's location at that commit. A link whose spelling was adjusted when its document moved is recognised by the target it named. A link that never resolved uses the parent of the commit that removed the target, and the report says so. A link whose target never existed is left as written and reported as unresolved. Only commits reachable from the current branch are used, so the permalinks survive a merge.
+
+Broken links in other documents are never rewritten. They are reported for a person to point at the target's current home. `--dry-run` prints each link, the commit and path it resolves to, and how, without changing files. History repair needs full history and stops in a shallow clone; run `git fetch --unshallow` first.
 
 ### Format and Validate
 

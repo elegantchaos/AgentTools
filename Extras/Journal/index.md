@@ -1,5 +1,13 @@
 # Development Journal
 
+- [2026-11-17 AgentTools 4.1.0](2026-11-17-release-4.1.0.md) — Release preparation for PR #17's Markdown link checking and historical repair; full validation passed all 321 tests, with merge, publication and local Mint installation authorised.
+
+- [2026-11-17 PR #17 Review Fixes](2026-11-17-pr17-review-fixes.md) — Addressed all six findings with regression coverage, including multiline Markdown, target additions and merge history, escaped destinations and nested submodules; targeted and full macOS validation passed all 321 tests on `068d543`, and the rebuilt command resolves the repository's four known historical links in a dry run.
+
+- [2026-11-16 PR #17 Review](2026-11-16-pr17-review.md) — Six reproduced defects in history selection, Markdown parsing and submodule indexing; addressed in the 17 November follow-up, with validation recorded there.
+
+- [2026-11-16 Markdown Link Check And History Repair](2026-11-16-markdown-links.md) — `agt links` reports broken relative Markdown links, and `--fix-history` turns broken links in journal entries and reviews into permalinks at the commit that introduced them; replayed on Bookish, it matched the prototype used for PR #140.
+
 - [2026-11-10 Simulator Runtimes Follow The Selected Xcode](2026-11-10-simulator-sdk-runtime.md) — Test simulators no longer use a runtime newer than the selected Xcode's simulator SDK.
 
 - [2026-11-09 AgentTools 4.0.0](2026-11-09-release-4.0.0.md) — Major release of the paired-worktree validation modes from PR #14 and the lock release fix from PR #13; bare `agt validate` is now change-scoped and `--fast` is gone.

@@ -77,12 +77,8 @@ struct WorktreeCreator {
     return location.path
   }
 
-  /// Runs a read-only Git query and preserves the diagnostic on failure.
+  /// Runs a read-only Git query in the checkout `process` uses, returning its trimmed output.
   private func git(_ arguments: [String], using process: ValidationProcess) throws -> String {
-    let result = try process.capture(["git"] + arguments)
-    guard result.status == 0 else {
-      throw ToolError("Git query failed: \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-    }
-    return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    try GitQuery(workingDirectory: process.workingDirectory).output(arguments).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

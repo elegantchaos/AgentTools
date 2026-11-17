@@ -1,5 +1,14 @@
 # Release Notes
 
+## 4.1.0
+
+Adds `agt links` to check repository Markdown links and repair broken citations in historical records.
+
+- `agt links` checks relative links in tracked Markdown files and fails when targets are missing. It handles multiline links and reference definitions, Markdown escapes, character references and percent-encoded paths, while ignoring fenced code and code spans.
+- `agt links --fix-history` converts broken links in journal entries and reviews to GitHub permalinks at the first commit where the document carried the link and its target existed. It follows document renames, recognises respelled links after moves, and considers targets added between document edits or brought in by a merge.
+- History repair preserves link text and anchors, supports custom historical paths and `--dry-run`, and refuses shallow clones. Links whose targets never resolved use the commit before removal; targets that never existed remain unresolved.
+- Target checks remain case-exact inside checked-out submodules. Unavailable submodules are reported as unverified, and directories containing only submodules are recognised.
+
 ## 4.0.0
 
 Validation now has three modes, and bare `agt validate` no longer runs full validation. Callers that need complete coverage must pass `--full`.
