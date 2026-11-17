@@ -1,6 +1,6 @@
 # Development Journal
 
-- [2026-11-17 PR #17 Review Fixes](2026-11-17-pr17-review-fixes.md) — Addressed all six findings with regression coverage, including multiline Markdown, target additions and merge history, escaped destinations and nested submodules; 321 targeted tests pass, full validation pending.
+- [2026-11-17 PR #17 Review Fixes](2026-11-17-pr17-review-fixes.md) — Addressed all six findings with regression coverage, including multiline Markdown, target additions and merge history, escaped destinations and nested submodules; targeted and full macOS validation passed all 321 tests on `068d543`, and the rebuilt command resolves the repository's four known historical links in a dry run.
 
 - [2026-11-16 PR #17 Review](2026-11-16-pr17-review.md) — Six reproduced defects in history selection, Markdown parsing and submodule indexing; addressed in the 17 November follow-up, with validation recorded there.
 
