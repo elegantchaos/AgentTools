@@ -182,7 +182,7 @@ Check the relative links in a repository's tracked Markdown files:
 agt links
 ```
 
-Each link whose target does not exist is reported on one line as `file:line` with the destination as written, and the command exits non-zero when there are any. Paths are compared with Git's own listing, so a link that differs from its target only by case is broken, as it would be on GitHub. Percent-encoded paths are decoded, and a leading `/` means the repository root. Links in fenced code blocks and code spans, absolute URLs, `mailto:` links and same-document anchors are ignored. A link into a submodule that is not checked out is listed as unverified and does not fail the check.
+Each link whose target does not exist is reported on one line as `file:line` with the destination as written, and the command exits non-zero when there are any. Paths are compared with Git's own listing, including inside checked-out submodules, so a link that differs from its target only by case is broken, as it would be on GitHub. Markdown escapes, character references and percent-encoded paths are decoded, and a leading `/` means the repository root. Inline links and reference definitions can continue onto the next line. Links in fenced code blocks and code spans, including multiline spans, absolute URLs, `mailto:` links and same-document anchors are ignored. A link into a submodule that is not checked out is listed as unverified and does not fail the check.
 
 When a change moves or removes a file, journal entries and reviews that linked to it should keep showing what their author cited. Repair them with:
 

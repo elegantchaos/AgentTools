@@ -33,7 +33,7 @@ struct LinksReport: Equatable {
       let link = "\(repair.finding.location)  \(repair.finding.link.destination)"
       switch repair.outcome {
         case .permalink(_, let resolution):
-          let basis = resolution.basis == .introduced ? "the commit that introduced the link" : "fallback: the parent of the commit that removed the target"
+          let basis = resolution.basis == .introduced ? "the first commit where the link resolved" : "fallback: the parent of the commit that removed the target"
           lines.append("\(dryRun ? "would fix" : "fixed")   \(link)  ->  \(resolution.commit) \(resolution.path)  (\(basis))")
         case .unresolved:
           lines.append("unresolved  \(link)  (the target never existed on this branch)")

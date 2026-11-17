@@ -9,6 +9,48 @@ import Testing
 
 /// Checks which Markdown constructs count as links, and how their destinations are read.
 struct MarkdownLinkScannerTests {
+  /// Code spans may cross lines, and escaped opening brackets cannot begin links.
+  @Test func ignoresMultilineCodeAndEscapedBrackets() {
+    let text = #"""
+      `example begins
+      [code](Code.md)
+      example ends`
+
+      \[literal](Literal.md)
+      [real](Real.md)
+      """#
+    #expect(MarkdownLinkScanner.links(in: text).map(\.destination) == ["Real.md"])
+  }
+
+  /// Destinations can begin on the next line without losing their source positions.
+  @Test func findsMultilineDestinations() {
+    let text = """
+      [inline](
+        Missing.md "Title")
+
+      [reference]:
+        Other.md
+
+      [reference]
+      """
+    let links = MarkdownLinkScanner.links(in: text)
+    #expect(links.map(\.destination) == ["Missing.md", "Other.md"])
+    #expect(links.map(\.line) == [1, 4])
+    for link in links {
+      #expect(String(text[link.range]) == link.destination)
+    }
+  }
+
+  /// Markdown decoding precedes URL parsing; encoded URL delimiters remain part of the filename.
+  @Test(arguments: [
+    (#"a\(b\).md"#, "a(b).md"), ("a&amp;b.md", "a&b.md"), ("caf&eacute;.md", "café.md"),
+    ("a&#35;section", "a"), ("a%23b.md", "a#b.md"), ("a&#x26;b.md", "a&b.md"),
+  ])
+  func decodesMarkdownDestinations(destination: String, expected: String) throws {
+    let link = try #require(MarkdownLinkScanner.links(in: "[x](\(destination))").first)
+    #expect(link.path == expected)
+  }
+
   /// Inline links, images, bracketed destinations, titles and reference definitions are all found, with their lines.
   @Test func findsEveryLinkForm() {
     let text = """

@@ -9,6 +9,13 @@ import Testing
 
 /// Checks that owner and repository come from the remote URL forms Git uses, and how permalinks are built.
 struct GitHubRemoteTests {
+  /// Decoded anchor punctuation cannot terminate the repaired Markdown link or double-encode existing escapes.
+  @Test func permalinkEncodesAnchorPunctuation() throws {
+    let remote = try GitHubRemote(url: "git@github.com:example/project.git")
+    let resolution = LinkResolution(commit: "abc123", path: "Old.md", isDirectory: false, basis: .introduced)
+    #expect(remote.permalink(to: resolution, fragment: "#a(b)[c]%20d") == "https://github.com/example/project/blob/abc123/Old.md#a%28b%29%5Bc%5D%20d")
+  }
+
   /// SSH and HTTPS remotes, with or without `.git`, name the same repository.
   @Test(arguments: [
     "git@github.com:example/project.git", "git@github.com:example/project", "ssh://git@github.com/example/project.git",

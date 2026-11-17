@@ -28,6 +28,9 @@ struct GitHubRemote: Equatable {
     // Brackets and parentheses are valid in URL paths but would end a Markdown link early.
     let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "()[]"))
     let path = resolution.path.addingPercentEncoding(withAllowedCharacters: allowed) ?? resolution.path
-    return "https://github.com/\(owner)/\(name)/\(resolution.isDirectory ? "tree" : "blob")/\(resolution.commit)/\(path)\(fragment)"
+    // Preserve existing URL escapes while protecting decoded Markdown punctuation in the anchor.
+    let fragmentAllowed = CharacterSet.urlFragmentAllowed.union(CharacterSet(charactersIn: "%")).subtracting(CharacterSet(charactersIn: "()[]"))
+    let anchor = fragment.hasPrefix("#") ? "#" + (String(fragment.dropFirst()).addingPercentEncoding(withAllowedCharacters: fragmentAllowed) ?? String(fragment.dropFirst())) : ""
+    return "https://github.com/\(owner)/\(name)/\(resolution.isDirectory ? "tree" : "blob")/\(resolution.commit)/\(path)\(anchor)"
   }
 }

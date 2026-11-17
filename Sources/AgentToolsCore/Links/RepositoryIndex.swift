@@ -10,9 +10,6 @@ import Foundation
 /// Holds tracked and untracked-but-not-ignored files that are still on disk, the directories containing them, and
 /// the submodule paths. `LinkChecker` asks it which Markdown files to scan and whether a link's target exists.
 struct RepositoryIndex {
-  /// Root of the checkout.
-  let repoPath: String
-
   /// Tracked Markdown files, sorted.
   let markdownFiles: [String]
 
@@ -24,6 +21,9 @@ struct RepositoryIndex {
 
   /// Paths of the checkout's submodules.
   private let submodules: [String]
+
+  /// Each initialised submodule's own case-exact index, including its nested submodules.
+  private let checkedOutSubmodules: [String: RepositoryIndex]
 
   /// Reads the index and working tree state of the checkout at `repoPath`.
   init(repoPath: String) throws {
@@ -42,17 +42,24 @@ struct RepositoryIndex {
     }
     let files = Set(tracked).union(Self.paths(try git.output(["ls-files", "-z", "--others", "--exclude-standard"])))
     var directories: Set<String> = []
-    for file in files {
+    for file in files.union(submodules) {
       var directory = RepositoryPath.directory(of: file)
       while !directory.isEmpty, directories.insert(directory).inserted {
         directory = RepositoryPath.directory(of: directory)
       }
     }
-    self.repoPath = repoPath
+    var checkedOutSubmodules: [String: RepositoryIndex] = [:]
+    for submodule in submodules {
+      let checkout = URL(fileURLWithPath: repoPath).appending(path: submodule)
+      if FileManager.default.fileExists(atPath: checkout.appending(path: ".git").path) {
+        checkedOutSubmodules[submodule] = try RepositoryIndex(repoPath: checkout.path)
+      }
+    }
     self.markdownFiles = Set(tracked).filter { $0.lowercased().hasSuffix(".md") || $0.lowercased().hasSuffix(".markdown") }.sorted()
     self.files = files
     self.directories = directories
     self.submodules = submodules
+    self.checkedOutSubmodules = checkedOutSubmodules
   }
 
   /// Reports whether a root-relative path exists; the empty string is the root.
@@ -60,9 +67,12 @@ struct RepositoryIndex {
     if path.isEmpty || files.contains(path) || directories.contains(path) { return .present }
     guard let submodule = submodules.first(where: { RepositoryPath.contains(path, in: $0) }) else { return .missing }
     if path == submodule { return .present }
-    let checkout = URL(fileURLWithPath: repoPath).appending(path: submodule)
-    guard FileManager.default.fileExists(atPath: checkout.appending(path: ".git").path) else { return .unverified(submodule: submodule) }
-    return FileManager.default.fileExists(atPath: URL(fileURLWithPath: repoPath).appending(path: path).path) ? .present : .missing
+    guard let index = checkedOutSubmodules[submodule] else { return .unverified(submodule: submodule) }
+    switch index.presence(of: String(path.dropFirst(submodule.count + 1))) {
+      case .present: return .present
+      case .missing: return .missing
+      case .unverified(let nested): return .unverified(submodule: submodule + "/" + nested)
+    }
   }
 
   /// Splits NUL-separated Git output into its entries.

@@ -1,6 +1,8 @@
 # Development Journal
 
-- [2026-11-16 PR #17 Review](2026-11-16-pr17-review.md) — Needs rework: six reproduced defects in history selection, Markdown parsing and submodule indexing; existing full-validation evidence inspected, review report recorded, no implementation changes.
+- [2026-11-17 PR #17 Review Fixes](2026-11-17-pr17-review-fixes.md) — Addressed all six findings with regression coverage, including multiline Markdown, target additions and merge history, escaped destinations and nested submodules; 321 targeted tests pass, full validation pending.
+
+- [2026-11-16 PR #17 Review](2026-11-16-pr17-review.md) — Six reproduced defects in history selection, Markdown parsing and submodule indexing; addressed in the 17 November follow-up, with validation recorded there.
 
 - [2026-11-16 Markdown Link Check And History Repair](2026-11-16-markdown-links.md) — `agt links` reports broken relative Markdown links, and `--fix-history` turns broken links in journal entries and reviews into permalinks at the commit that introduced them; replayed on Bookish, it matched the prototype used for PR #140.
 

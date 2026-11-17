@@ -22,6 +22,9 @@ struct LinkingFileHistory {
   /// The document's links at each revision, by index into `revisions`.
   private var links: [Int: RevisionLinks] = [:]
 
+  /// Target additions, oldest first, cached by path for links whose target was absent at a document edit.
+  private var additions: [String: [String]] = [:]
+
   /// Reads the history of `file`, a root-relative path, in the checkout `git` queries.
   init(file: String, git: GitQuery) throws {
     // `--reverse` stops `--follow` tracking renames, so the log is read newest first and reversed here.
@@ -58,6 +61,10 @@ struct LinkingFileHistory {
         if let isDirectory = try kind(of: path, at: revision.commit) {
           return LinkResolution(commit: revision.commit, path: path, isDirectory: isDirectory, basis: .introduced)
         }
+        let next = index + 1 < revisions.count ? revisions[index + 1].commit : nil
+        if let resolution = try firstAddition(of: path, after: revision, before: next, carrying: link) {
+          return resolution
+        }
       }
     }
     var tried: Set<String> = []
@@ -68,6 +75,30 @@ struct LinkingFileHistory {
       let commit = parent.trimmingCharacters(in: .whitespacesAndNewlines)
       if let isDirectory = try kind(of: path, at: commit) {
         return LinkResolution(commit: commit, path: path, isDirectory: isDirectory, basis: .beforeRemoval)
+      }
+    }
+    return nil
+  }
+
+  /// Finds when a missing target first appeared while this document revision still carried its link.
+  private mutating func firstAddition(of path: String, after revision: Revision, before next: String?, carrying link: MarkdownLink) throws -> LinkResolution? {
+    if additions[path] == nil {
+      // Include merges against each parent: a merge can first bring the target together with the document.
+      // Renames into this path are additions too; a directory appears when its first child is added.
+      additions[path] = try git.output(["log", "--reverse", "--topo-order", "--full-history", "-m", "--no-renames", "--diff-filter=A", "--format=%H", "--", path])
+        .split(whereSeparator: \.isNewline).map(String.init)
+    }
+    for commit in additions[path] ?? [] {
+      guard try git.outputIfSuccessful(["merge-base", "--is-ancestor", revision.commit, commit]) != nil else { continue }
+      if let next, try git.outputIfSuccessful(["merge-base", "--is-ancestor", next, commit]) != nil { continue }
+      guard let text = try git.outputIfSuccessful(["show", "\(commit):\(revision.path)"]) else { continue }
+      let carriesLink = MarkdownLinkScanner.links(in: text).contains {
+        if $0.destination == link.destination { return true }
+        guard let currentPath = link.repositoryPath(from: file) else { return false }
+        return $0.repositoryPath(from: revision.path) == currentPath
+      }
+      if carriesLink, let isDirectory = try kind(of: path, at: commit) {
+        return LinkResolution(commit: commit, path: path, isDirectory: isDirectory, basis: .introduced)
       }
     }
     return nil

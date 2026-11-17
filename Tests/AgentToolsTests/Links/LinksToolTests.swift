@@ -10,6 +10,157 @@ import Testing
 
 /// Runs link checking and history repair against real repositories built for each test.
 struct LinksToolTests {
+  /// Target additions on another branch qualify when the merge first brings the document and target together.
+  @Test func targetAndDocumentFirstCoexistAtAMerge() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("README.md", "Root")
+    try fixture.commit()
+    let branch = try fixture.git(["branch", "--show-current"])
+    try fixture.git(["checkout", "-qb", "target"])
+    try fixture.write("Old.md", "Old")
+    try fixture.commit()
+    try fixture.git(["checkout", "-q", branch])
+    try fixture.write("Extras/Journal/Entry.md", "[old](../../Old.md)")
+    try fixture.commit()
+    try fixture.git(["merge", "--no-ff", "-qm", "Bring target together with document", "target"])
+    let firstValid = try fixture.git(["rev-parse", "HEAD"])
+    try fixture.write("Old.md", "Later version")
+    try fixture.commit()
+    try fixture.git(["rm", "-q", "Old.md"])
+    try fixture.commit()
+
+    let report = try fixture.tool.fixHistory(paths: [], dryRun: false)
+    let repair = try #require(report.repairs.first)
+    guard case .permalink(_, let resolution) = repair.outcome else {
+      Issue.record("Expected a historical permalink")
+      return
+    }
+    #expect(resolution.commit == firstValid)
+    #expect(resolution.basis == .introduced)
+  }
+
+  /// A period when the document lacks the link cannot qualify merely because the target appears then.
+  @Test func targetAdditionWhileLinkIsAbsentDoesNotQualify() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("Extras/Journal/Entry.md", "[old](../../Old.md)")
+    try fixture.commit()
+    try fixture.write("Extras/Journal/Entry.md", "No link")
+    try fixture.commit()
+    try fixture.write("Old.md", "Old")
+    let last = try fixture.commit()
+    try fixture.git(["rm", "-q", "Old.md"])
+    try fixture.commit()
+    try fixture.write("Extras/Journal/Entry.md", "[old](../../Old.md)")
+    try fixture.commit()
+
+    let report = try fixture.tool.fixHistory(paths: [], dryRun: false)
+    let repair = try #require(report.repairs.first)
+    guard case .permalink(_, let resolution) = repair.outcome else {
+      Issue.record("Expected a historical permalink")
+      return
+    }
+    #expect(resolution.commit == last)
+    #expect(resolution.basis == .beforeRemoval)
+  }
+
+  /// Multiline links with Markdown-escaped destinations are checked and repaired without disturbing titles.
+  @Test func multilineEscapedDestinationIsRepaired() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("a(b)&é.md", "Old")
+    let original = "Préface [old](\n  ../../a\\(b\\)&amp;&eacute;.md#part \"Title\")\n"
+    try fixture.write("Extras/Journal/Entry.md", original)
+    let introduced = try fixture.commit()
+    #expect(try fixture.tool.check().hasBrokenLinks == false)
+    try fixture.git(["rm", "-q", "a(b)&é.md"])
+    try fixture.commit()
+
+    #expect(try fixture.tool.check().broken.map(\.location) == ["Extras/Journal/Entry.md:1"])
+    let report = try fixture.tool.fixHistory(paths: [], dryRun: false)
+    #expect(report.repairs.count == 1)
+    #expect(try fixture.read("Extras/Journal/Entry.md") == "Préface [old](\n  https://github.com/example/project/blob/\(introduced)/a%28b%29&%C3%A9.md#part \"Title\")\n")
+    #expect(try fixture.tool.check().hasBrokenLinks == false)
+  }
+
+  /// A target introduced between document edits resolves at its first available version, for files and folders.
+  @Test(arguments: ["../../Docs/Target.md", "../../Docs"])
+  func targetAddedBetweenDocumentEditsUsesItsFirstCommit(destination: String) throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("Extras/Journal/Entry.md", "[target](\(destination))")
+    try fixture.commit()
+    try fixture.write("Docs/Target.md", "Initial version")
+    let firstValid = try fixture.commit()
+    try fixture.write("Docs/Target.md", "Later version")
+    try fixture.commit()
+    try fixture.git(["rm", "-qr", "Docs"])
+    try fixture.commit()
+
+    let report = try fixture.tool.fixHistory(paths: [], dryRun: false)
+    let repair = try #require(report.repairs.first)
+    guard case .permalink(_, let resolution) = repair.outcome else {
+      Issue.record("Expected a historical permalink")
+      return
+    }
+    #expect(resolution.commit == firstValid)
+    #expect(resolution.basis == .introduced)
+  }
+
+  /// Code examples stay unchanged even when a real link to the same removed target is repaired beside them.
+  @Test func repairPreservesLiteralExamples() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    let examples = #"""
+      `example begins
+      [code](../../Old.md)
+      example ends`
+
+      \[literal](../../Old.md)
+      """#
+    try fixture.write("Old.md", "Old")
+    try fixture.write("Extras/Journal/Entry.md", examples + "\n[real](../../Old.md)")
+    let introduced = try fixture.commit()
+    try fixture.git(["rm", "-q", "Old.md"])
+    try fixture.commit()
+
+    let report = try fixture.tool.fixHistory(paths: [], dryRun: false)
+    #expect(report.repairs.count == 1)
+    #expect(try fixture.read("Extras/Journal/Entry.md") == examples + "\n[real](https://github.com/example/project/blob/\(introduced)/Old.md)")
+  }
+
+  /// Submodule ancestors exist even before the modules are initialised.
+  @Test func submoduleOnlyDirectoryIsPresent() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("README.md", "[parent](Packages) [module](Packages/Kit) [unknown](Packages/Kit/README.md)")
+    let revision = try fixture.commit()
+    try fixture.git(["update-index", "--add", "--cacheinfo", "160000,\(revision),Packages/Kit"])
+    let report = try fixture.tool.check()
+    #expect(report.broken.isEmpty)
+    #expect(report.unverified.map(\.link.destination) == ["Packages/Kit/README.md"])
+  }
+
+  /// Each initialised module uses its own Git paths, including nested module boundaries.
+  @Test func submoduleTargetsAreCaseExact() throws {
+    let fixture = try LinkFixture()
+    defer { fixture.remove() }
+    try fixture.write("Packages/Kit/README.md", "Kit")
+    try fixture.git(["-C", "Packages/Kit", "init", "--quiet"])
+    try fixture.git(["-C", "Packages/Kit", "add", "README.md"])
+    try fixture.git(["-C", "Packages/Kit", "commit", "-qm", "Kit"])
+    let module = try fixture.git(["-C", "Packages/Kit", "rev-parse", "HEAD"])
+    try fixture.git(["-C", "Packages/Kit", "update-index", "--add", "--cacheinfo", "160000,\(module),Nested"])
+    try fixture.write("README.md", "[valid](Packages/Kit/README.md) [wrong](Packages/Kit/readme.md) [nested](Packages/Kit/Nested/File.md)")
+    try fixture.git(["add", "README.md"])
+    try fixture.git(["update-index", "--add", "--cacheinfo", "160000,\(module),Packages/Kit"])
+
+    let report = try fixture.tool.check()
+    #expect(report.broken.map(\.link.destination) == ["Packages/Kit/readme.md"])
+    #expect(report.unverified.first?.problem == .unverified(submodule: "Packages/Kit/Nested"))
+  }
+
   /// A check reports only links whose target is missing, whatever characters the names contain.
   @Test func checkReportsMissingTargets() throws {
     let fixture = try LinkFixture()
@@ -220,7 +371,7 @@ struct LinksToolTests {
 
     let report = try fixture.tool.fixHistory(paths: [], dryRun: true)
     #expect(try fixture.read("Extras/Journal/Entry.md") == "[old](../../Old.md)")
-    #expect(report.lines == ["would fix   Extras/Journal/Entry.md:1  ../../Old.md  ->  \(introduced) Old.md  (the commit that introduced the link)", "0 broken, 0 unverified, 1 fixable"])
+    #expect(report.lines == ["would fix   Extras/Journal/Entry.md:1  ../../Old.md  ->  \(introduced) Old.md  (the first commit where the link resolved)", "0 broken, 0 unverified, 1 fixable"])
     #expect(report.hasBrokenLinks)
   }
 
