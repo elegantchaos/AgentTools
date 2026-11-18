@@ -1,5 +1,9 @@
 # Development Journal
 
+- [2026-11-18 AgentTools 4.2.0](2026-11-18-release-4.2.0.md) — Release of PR #18's Claude Code sandbox exclusions for `agt` and `rt`; full local validation passed, and a timed-out CI job was re-run before merging.
+
+- [2026-11-18 Run agt Outside Claude Code's Sandbox](2026-11-18-claude-excluded-commands.md) — A sandboxed probe showed full validation cannot run inside an agent sandbox, as simulators are unreachable there; `agt sandbox configure` now lists `agt` and `rt` in Claude Code's `sandbox.excludedCommands`; targeted validation passed all 323 tests.
+
 - [2026-11-17 AgentTools 4.1.0](2026-11-17-release-4.1.0.md) — Release preparation for PR #17's Markdown link checking and historical repair; full validation passed all 321 tests, with merge, publication and local Mint installation authorised.
 
 - [2026-11-17 PR #17 Review Fixes](2026-11-17-pr17-review-fixes.md) — Addressed all six findings with regression coverage, including multiline Markdown, target additions and merge history, escaped destinations and nested submodules; targeted and full macOS validation passed all 321 tests on `068d543`, and the rebuilt command resolves the repository's four known historical links in a dry run.

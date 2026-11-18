@@ -5,18 +5,20 @@
 
 import ArgumentParser
 
-/// Lets Claude Code's and Codex's sandboxes write the caches and temporary directory that Swift validation needs, and the shared Agents checkout.
+/// Lets Claude Code's and Codex's sandboxes write the caches and temporary directory that Swift validation needs, and the shared Agents checkout, and runs `agt` and `rt` outside Claude Code's sandbox.
 struct SandboxConfigureCommand: ParsableCommand {
   /// Command metadata.
   static let configuration = CommandConfiguration(
     commandName: "configure",
-    abstract: "Allow Claude Code's and Codex's sandboxes to write the caches and temporary directory that Swift validation needs, and the Agents checkout.",
+    abstract: "Allow Claude Code's and Codex's sandboxes to write what Swift validation needs, and run agt and rt outside Claude Code's sandbox.",
     discussion: """
       Adds SwiftPM's cache, the per-user clang module cache, the per-user temporary directory, and the Agents checkout (`AGENTS_REPO_ROOT`, or \
       `~/.local/share/agents`) to `sandbox.filesystem.allowWrite` in Claude Code's \
       `settings.json`, and to `sandbox_workspace_write.writable_roots` in Codex's `config.toml`, under \
-      `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. Other settings are kept, and a changed file is backed up with a \
-      `.bak` suffix first. Running it again changes nothing.
+      `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when set. It also adds `agt` and `rt`, by name and by their Mint path, to \
+      `sandbox.excludedCommands` in Claude Code's settings, since full validation drives iOS simulators, which no \
+      agent sandbox can reach. Other settings are kept, and a changed file is backed up with a `.bak` suffix first. \
+      Running it again changes nothing.
       """
   )
 
