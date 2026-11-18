@@ -1,6 +1,8 @@
 # Release Notes
 
-## Unreleased
+## 4.2.0
+
+Runs `agt` and `rt` outside Claude Code's sandbox, so full validation can reach iOS simulators.
 
 - `agt sandbox configure` (and so `agt refresh`) lists `agt` and `rt` in Claude Code's `sandbox.excludedCommands`, by name and by their Mint path, so Claude runs them outside its sandbox. Full validation drives iOS simulators, which no agent sandbox lets a command reach. Run `agt` on its own: a `cd … &&` prefix, a pipe or a redirect keeps the call sandboxed.
 
