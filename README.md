@@ -346,11 +346,14 @@ The three locations are:
 
 `agt sandbox configure` also allows writes to the Agents checkout that maintenance commands use, `AGENTS_REPO_ROOT` or `~/.local/share/agents`, so agents working in other projects can update the shared guidance. Validation does not need it.
 
-To configure them by hand for Claude Code, add them to `sandbox.filesystem.allowWrite` in `~/.claude/settings.json`:
+For Claude Code, it also lists `agt` and `rt` in `sandbox.excludedCommands`, by name and by the path Mint installs them at, so Claude runs them outside its sandbox. Writable paths are not enough for full validation: it drives iOS simulators, and no agent sandbox lets a command reach the simulator service. Claude keeps a call sandboxed when any part of it is not excluded, so run `agt` on its own; a `cd … &&` prefix, a pipe or a redirect to a file keeps it inside. Codex runs commands outside its sandbox through allow rules instead, which the Agents repository's shared rules provide.
+
+To configure them by hand for Claude Code, add the paths to `sandbox.filesystem.allowWrite`, and the commands to `sandbox.excludedCommands`, in `~/.claude/settings.json`:
 
 ```json
 {
   "sandbox": {
+    "excludedCommands": ["agt *", "rt *", "/Users/you/.mint/bin/agt *", "/Users/you/.mint/bin/rt *"],
     "filesystem": {
       "allowWrite": ["~/Library/Caches/org.swift.swiftpm", "/var/folders/.../C/clang/ModuleCache", "/var/folders/.../T", "~/.local/share/agents"]
     }

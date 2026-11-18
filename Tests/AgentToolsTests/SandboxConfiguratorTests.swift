@@ -38,6 +38,15 @@ struct SandboxConfiguratorTests {
     #expect(paths.contains("/Users/someone/.local/share/agents") == false)
   }
 
+  /// Excludes `agt` and `rt` from Claude Code's sandbox, by name and by their Mint path, with any arguments.
+  @Test func computesExcludedCommands() {
+    let commands = SandboxConfigurator.excludedCommands(homeDirectory: URL(fileURLWithPath: "/Users/someone"))
+    #expect(
+      commands == [
+        "agt *", "rt *", "/Users/someone/.mint/bin/agt *", "/Users/someone/.mint/bin/rt *",
+      ])
+  }
+
   /// Finds a user cache directory for the current user.
   @Test func findsUserCacheDirectory() throws {
     let directory = try SandboxConfigurator.userCacheDirectory()
@@ -57,7 +66,7 @@ struct SandboxConfiguratorTests {
     let configurator = SandboxConfigurator(
       environment: ["CLAUDE_CONFIG_DIR": "/claude", "CODEX_HOME": "/codex"],
       homeDirectory: URL(fileURLWithPath: "/home"),
-      paths: []
+      paths: [], excludedCommands: []
     )
     #expect(configurator.claudeSettings.path == "/claude/settings.json")
     #expect(configurator.codexConfig.path == "/codex/config.toml")
@@ -69,7 +78,8 @@ struct SandboxConfiguratorTests {
       let first = try configurator.configure()
       #expect(first.map(\.status) == [.updated, .updated])
       #expect(try String(contentsOf: configurator.codexConfig, encoding: .utf8).contains("\"/cache/clang\""))
-      #expect(try Data(contentsOf: configurator.claudeSettings).isEmpty == false)
+      let claude = try String(contentsOf: configurator.claudeSettings, encoding: .utf8)
+      #expect(claude.contains("\"agt *\""))
 
       let second = try configurator.configure()
       #expect(second.map(\.status) == [.unchanged, .unchanged])
@@ -117,7 +127,7 @@ struct SandboxConfiguratorTests {
         "CODEX_HOME": root.appendingPathComponent("codex").path,
       ],
       homeDirectory: root,
-      paths: ["/cache/swiftpm", "/cache/clang"]
+      paths: ["/cache/swiftpm", "/cache/clang"], excludedCommands: ["agt *"]
     )
     try body(configurator)
   }

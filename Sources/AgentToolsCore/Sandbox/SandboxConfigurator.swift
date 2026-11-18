@@ -14,7 +14,10 @@ import Foundation
 /// temporary directory whatever `TMPDIR` says, so that must be writable too. Agents also maintain the shared guidance from sessions in other projects, so the Agents checkout that
 /// maintenance commands use must be writable too. The paths are machine-specific, so they are computed here and
 /// merged into each runtime's user configuration by ``ClaudeSandboxSettings`` and ``CodexSandboxConfig``.
-/// Configuring is idempotent and backs up a file with a `.bak` suffix before changing it.
+/// It also lists `agt` and `rt` in Claude Code's excluded commands, so Claude runs them outside its sandbox: full
+/// validation drives iOS simulators, which no writable path makes reachable. Codex does the same through allow rules,
+/// which the Agents repository provides. Configuring is idempotent and backs up a file with a `.bak` suffix before
+/// changing it.
 struct SandboxConfigurator {
   /// Claude Code's user settings file.
   let claudeSettings: URL
@@ -25,11 +28,15 @@ struct SandboxConfigurator {
   /// Directories that must be writable.
   let paths: [String]
 
+  /// Commands that run outside Claude Code's sandbox.
+  let excludedCommands: [String]
+
   /// Creates a configurator for the runtime homes in `environment`, or under `homeDirectory` by default.
-  init(environment: [String: String], homeDirectory: URL, paths: [String]) {
+  init(environment: [String: String], homeDirectory: URL, paths: [String], excludedCommands: [String]) {
     claudeSettings = AgentRuntime.claude.home(environment: environment, homeDirectory: homeDirectory).appendingPathComponent("settings.json")
     codexConfig = AgentRuntime.codex.home(environment: environment, homeDirectory: homeDirectory).appendingPathComponent("config.toml")
     self.paths = paths
+    self.excludedCommands = excludedCommands
   }
 
   /// Creates a configurator for the current user and machine.
@@ -40,7 +47,8 @@ struct SandboxConfigurator {
       homeDirectory: homeDirectory,
       paths: writablePaths(
         environment: ProcessInfo.processInfo.environment, homeDirectory: homeDirectory,
-        userCacheDirectory: try userCacheDirectory(), userTempDirectory: try userTempDirectory())
+        userCacheDirectory: try userCacheDirectory(), userTempDirectory: try userTempDirectory()),
+      excludedCommands: excludedCommands(homeDirectory: homeDirectory)
     )
   }
 
@@ -56,6 +64,18 @@ struct SandboxConfigurator {
     cachePaths(homeDirectory: homeDirectory, userCacheDirectory: userCacheDirectory)
       + [URL(fileURLWithPath: userTempDirectory, isDirectory: true).path]
       + [RepoRootLocator.configuredRoot(environment: environment, homeDirectory: homeDirectory).path]
+  }
+
+  /// Returns the commands Claude Code runs outside its sandbox: `agt` and `rt`, with any arguments, by name and by
+  /// the path Mint installs them at.
+  ///
+  /// Full validation drives iOS simulators, whose service no agent sandbox lets a command reach, and both tools are
+  /// trusted, so they run outside it. Claude Code matches an excluded command against the command as written, so the
+  /// Mint path needs its own entry.
+  static func excludedCommands(homeDirectory: URL) -> [String] {
+    let mint = homeDirectory.appendingPathComponent(".mint/bin")
+    let tools = ["agt", "rt"]
+    return tools.map { "\($0) *" } + tools.map { "\(mint.appendingPathComponent($0).path) *" }
   }
 
   /// Returns SwiftPM's cache and the per-user clang module cache.
@@ -90,7 +110,7 @@ struct SandboxConfigurator {
   func configure() throws -> [SandboxConfigurationEntry] {
     [
       try update(.claude, file: claudeSettings) { text in
-        try ClaudeSandboxSettings.adding(paths, to: text.map { Data($0.utf8) }).map { String(decoding: $0, as: UTF8.self) }
+        try ClaudeSandboxSettings.adding(paths, excludedCommands: excludedCommands, to: text.map { Data($0.utf8) }).map { String(decoding: $0, as: UTF8.self) }
       },
       try update(.codex, file: codexConfig) { text in
         try CodexSandboxConfig.adding(paths, to: text ?? "")
