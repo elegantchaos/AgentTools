@@ -15,13 +15,13 @@ on:
   pull_request:
 
 jobs:
-  macOS-swift62:
-    name: "macOS (Swift 6.2)"
+  macOS-swift64:
+    name: "macOS (Swift 6.4)"
     uses: ./.github/workflows/SwiftWorkflowBuilderSwiftJob.yml
     with:
       platform: "macOS"
-      runner: "macos-26"
-      swift-version: "6.2"
-      compiler-id: "swift62"
+      runner: "xcode-27"
+      swift-version: "6.4"
+      compiler-id: "swift64"
       setup-mode: "release"
       operation: "test"

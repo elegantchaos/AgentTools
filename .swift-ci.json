@@ -1,6 +1,6 @@
 {
     "platforms": ["macOS"],
-    "compilers": ["swift62"],
+    "compilers": ["swiftLatest"],
     "configurations": ["release"],
     "test": true,
     "header": false,
