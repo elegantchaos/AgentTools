@@ -9,7 +9,7 @@ import Testing
 
 @testable import AgentToolsCore
 
-/// Tests the parts of `agt refresh` that find runtimes, plan plugin installs, and check helper copies.
+/// Tests the parts of `agt refresh` that find runtimes and plan plugin installs.
 struct RefreshTests {
   /// Plugin commands inherit the caller's process group; the probe also rejects a mismatched group.
   @Test(arguments: [true, false])
@@ -143,16 +143,6 @@ struct RefreshTests {
   @Test func marketplacePaths() {
     #expect(PluginInstallPlan.marketplacePath(for: .claude) == ".claude-plugin/marketplace.json")
     #expect(PluginInstallPlan.marketplacePath(for: .codex) == ".agents/plugins/marketplace.json")
-  }
-
-  /// Reports the plugin copies of `ensure-agt.sh` that differ from the canonical one.
-  @Test func reportsDriftedHelperCopies() throws {
-    try withTemporaryDirectory { root in
-      try write("canonical", to: root.appendingPathComponent(HelperCopies.canonicalPath))
-      try write("canonical", to: root.appendingPathComponent("plugins/swift/skills/validation/scripts/ensure-agt.sh"))
-      try write("changed", to: root.appendingPathComponent("plugins/other/skills/tool/scripts/ensure-agt.sh"))
-      #expect(try HelperCopies.drifted(in: root) == ["plugins/other/skills/tool/scripts/ensure-agt.sh"])
-    }
   }
 
   /// Builds a child executable that checks its own process group without inspecting other processes.

@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-09-29
+- Revised: 2026-11-20
 
 ## Context
 
@@ -9,12 +10,12 @@ The shared Agents repository kept maintenance scripts alongside `agt`: `scripts/
 
 ## Decision
 
-Every script the Agents repository needs is an `agt` command, so `agt` is the only tool the repository depends on. The one exception is `ensure-agt.sh`, the bootstrap that installs or updates `agt` itself, which stays a small shell script copied into each plugin that needs `agt`.
+Every script the Agents repository needs is an `agt` command, so `agt` is the only tool the repository depends on. `agt` itself is installed and updated with Mint.
 
 ## Alternatives
 
 - Rejected: keeping the scripts and documenting their dependencies. Each new script can add a runtime and its version, and failures show up on a machine that lacks one, as the Python pin did.
-- Rejected: making `agt refresh` update `agt` itself. A running binary cannot reliably replace itself, and the bootstrap already does this with `--update`.
+- Rejected: making `agt refresh` update `agt` itself. A running binary cannot reliably replace itself, and `mint install` already does this.
 - Retained for later: third-party scripts that plugins bundle unchanged, such as the `swift:swiftui-trace` analyzer, which has no licence to port it under. They stay as they are until they can be rewritten or their licence allows porting.
 
 ## Consequences
