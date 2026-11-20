@@ -394,4 +394,4 @@ swift build
 swift test
 ```
 
-Generate the release test workflow with `swift ci generate`. The `swiftLatest` entry in `.swift-ci.json` selects the latest stable Swift version known to SwiftWorkflowBuilder at generation time. The hand-maintained `XcodeCompatibility.yml` checks that an Xcode 27 build also runs on macOS 26.
+Generate the release test workflow with `swift ci generate`. The `swiftLatest` entry in `.swift-ci.json` selects the latest stable Swift version known to SwiftWorkflowBuilder at generation time. Run the hand-maintained `XcodeCompatibility.yml` manually to check that an Xcode 27 build also runs on macOS 26.

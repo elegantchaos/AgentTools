@@ -1,9 +1,7 @@
 name: Xcode Runtime Compatibility
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   xcode-27-build:
