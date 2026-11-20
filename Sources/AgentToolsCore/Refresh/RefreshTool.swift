@@ -8,9 +8,9 @@ import Foundation
 
 /// Brings this machine's agent runtimes up to date with the shared Agents repository.
 ///
-/// It warns about plugin copies of `ensure-agt.sh` that have drifted, syncs and links the public skills, configures
-/// both runtimes' sandboxes with ``SandboxConfigurator``, then installs or refreshes every marketplace plugin in each
-/// runtime whose command ``RuntimeCommandLocator`` finds. Every step is idempotent.
+/// It syncs and links the public skills, configures both runtimes' sandboxes with ``SandboxConfigurator``, then
+/// installs or refreshes every marketplace plugin in each runtime whose command ``RuntimeCommandLocator`` finds.
+/// Every step is idempotent.
 struct RefreshTool {
   /// Root of the Agents repository.
   let repoRoot: URL
@@ -31,10 +31,6 @@ struct RefreshTool {
 
   /// Runs every step, stopping at the first failure.
   func run() throws {
-    for path in try HelperCopies.drifted(in: repoRoot) {
-      printError("warning: \(path) differs from \(HelperCopies.canonicalPath)")
-    }
-
     let skills = SkillsPublicTool(
       repoRoot: repoRoot,
       linkDestinations: SkillLinkDestination.defaults(
