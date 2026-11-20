@@ -39,6 +39,25 @@ struct ClaudeCommandTests {
     }
   }
 
+  /// A second launch uses the same private directory and leaves the saved Claude state intact.
+  @Test func retainsLocalProfile() throws {
+    let fileManager = FileManager.default
+    let userHome = fileManager.temporaryDirectory.appending(path: "agt-claude-test-\(UUID().uuidString)")
+    defer { try? fileManager.removeItem(at: userHome) }
+
+    let profile = try ClaudeCommand.prepareProfile(in: userHome)
+    #expect(profile == userHome.appending(path: "Library/Application Support/AgentTools/ClaudeOllama", directoryHint: .isDirectory))
+    let permissions = try fileManager.attributesOfItem(atPath: profile.path)[.posixPermissions] as? Int
+    #expect(permissions == 0o700)
+
+    let settings = profile.appending(path: ".claude.json")
+    let state = Data(#"{"hasCompletedOnboarding":true}"#.utf8)
+    try state.write(to: settings)
+    let nextProfile = try ClaudeCommand.prepareProfile(in: userHome)
+    #expect(nextProfile == profile)
+    #expect(try Data(contentsOf: nextProfile.appending(path: ".claude.json")) == state)
+  }
+
   /// Tokens, provider overrides and custom headers from the caller never reach the local session.
   @Test func isolatesLocalProvider() throws {
     let command = try ClaudeCommand.parse([])
@@ -51,15 +70,15 @@ struct ClaudeCommandTests {
         "CLAUDE_CODE_USE_BEDROCK": "1",
         "HOME": "/regular",
         "PATH": "/usr/bin",
-      ], home: URL(filePath: "/disposable"))
+      ], home: URL(filePath: "/ollama-profile"))
     #expect(environment["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11434")
     #expect(environment["ANTHROPIC_API_KEY"] == "ollama")
     #expect(environment["ANTHROPIC_AUTH_TOKEN"] == nil)
     #expect(environment["ANTHROPIC_CUSTOM_HEADERS"] == nil)
     #expect(environment["CLAUDE_CODE_OAUTH_TOKEN"] == nil)
     #expect(environment["CLAUDE_CODE_USE_BEDROCK"] == nil)
-    #expect(environment["HOME"] == "/disposable")
-    #expect(environment["CLAUDE_CONFIG_DIR"] == "/disposable/.claude")
+    #expect(environment["HOME"] == "/ollama-profile")
+    #expect(environment["CLAUDE_CONFIG_DIR"] == "/ollama-profile/.claude")
     #expect(environment["PATH"] == "/usr/bin")
   }
 }
