@@ -25,6 +25,17 @@ Show the installed version with `agt --version`.
 
 `agt refresh`, `agt rules` and `agt skills` use `~/.local/share/agents` by default and can run from any directory. Set `AGENTS_REPO_ROOT` to use a different checkout. The default checkout must contain `skills/`, `runtimes/` and `COMMON.md`. Run `agt format` and `agt validate` from the root of the Swift repository being checked. `agt sandbox configure`, `agt calendar` and `agt ui` run anywhere. `agt links` runs anywhere inside a Git checkout. `agt vm` reads its settings from the repository it runs in, when there is one, and otherwise from your own configuration.
 
+### Local Claude Code
+
+From a terminal, launch Claude Code against an Ollama server already running at `http://127.0.0.1:11434`:
+
+```shell
+agt claude
+agt claude --model qwen3.6:35b-a3b-q4_K_M
+```
+
+The default model is `gpt-oss:20b`. The launcher reads the installed models at startup and shows them by their Ollama IDs in `/model`. Sessions use a short system prompt, low effort, a 512-token output cap, and no tools. The launcher runs in your current directory and uses a temporary Claude configuration, which it removes when Claude exits normally. For your hosted models and regular configuration, run `claude`.
+
 ### Refresh
 
 Bring this machine's Claude Code and Codex up to date with the Agents repository:
