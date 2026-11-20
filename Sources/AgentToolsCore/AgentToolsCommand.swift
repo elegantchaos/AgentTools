@@ -17,6 +17,7 @@ public struct AgentToolsCommand: AsyncParsableCommand {
     abstract: "Maintenance and validation tools for agent-driven development.",
     subcommands: [
       CalendarCommand.self,
+      ClaudeCommand.self,
       FormatCommand.self,
       LinksCommand.self,
       PrepareCommand.self,

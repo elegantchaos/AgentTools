@@ -15,28 +15,6 @@ on:
   pull_request:
 
 jobs:
-  macOS-swift62:
-    name: "macOS (Swift 6.2)"
-    uses: ./.github/workflows/SwiftWorkflowBuilderSwiftJob.yml
-    with:
-      platform: "macOS"
-      runner: "macos-26"
-      swift-version: "6.2"
-      compiler-id: "swift62"
-      setup-mode: "release"
-      operation: "test"
-
-  macOS-swift63:
-    name: "macOS (Swift 6.3)"
-    uses: ./.github/workflows/SwiftWorkflowBuilderSwiftJob.yml
-    with:
-      platform: "macOS"
-      runner: "macos-26"
-      swift-version: "6.3"
-      compiler-id: "swift63"
-      setup-mode: "release"
-      operation: "test"
-
   macOS-swift64:
     name: "macOS (Swift 6.4)"
     uses: ./.github/workflows/SwiftWorkflowBuilderSwiftJob.yml

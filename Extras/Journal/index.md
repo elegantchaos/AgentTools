@@ -2,6 +2,8 @@
 
 - [2026-11-20 Drop the ensure-agt.sh Drift Check](2026-11-20-drop-helper-copies.md) — `agt refresh` no longer checks copies of `ensure-agt.sh`, which the Agents repository has deleted; `agt` Is the Agents Repository's Only Dependency (0006) revised to drop the bootstrap exception.
 
+- [2026-11-20 Local Claude Code Launcher](2026-11-20-claude-ollama-launcher.md) — Added `agt claude` with a temporary configuration and a picker populated from the local Ollama catalog. Targeted validation and a terminal picker smoke test passed.
+
 - [2026-11-18 AgentTools 4.2.0](2026-11-18-release-4.2.0.md) — Release of PR #18's Claude Code sandbox exclusions for `agt` and `rt`; full local validation passed, and a timed-out CI job was re-run before merging.
 
 - [2026-11-18 Run agt Outside Claude Code's Sandbox](2026-11-18-claude-excluded-commands.md) — A sandboxed probe showed full validation cannot run inside an agent sandbox, as simulators are unreachable there; `agt sandbox configure` now lists `agt` and `rt` in Claude Code's `sandbox.excludedCommands`; targeted validation passed all 323 tests.
