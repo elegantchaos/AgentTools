@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-20 Persistent Local Claude Profile](2026-11-20-claude-local-profile.md) — `agt claude` keeps onboarding and workspace trust in its own profile. Verified with two launches in a scratch home.
+
 - [2026-11-20 Drop the ensure-agt.sh Drift Check](2026-11-20-drop-helper-copies.md) — `agt refresh` no longer checks copies of `ensure-agt.sh`, which the Agents repository has deleted; `agt` Is the Agents Repository's Only Dependency (0006) revised to drop the bootstrap exception.
 
 - [2026-11-20 Local Claude Code Launcher](2026-11-20-claude-ollama-launcher.md) — Added `agt claude` with a temporary configuration and a picker populated from the local Ollama catalog. Targeted validation and a terminal picker smoke test passed.

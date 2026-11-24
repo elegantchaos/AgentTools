@@ -34,7 +34,7 @@ agt claude
 agt claude --model qwen3.6:35b-a3b-q4_K_M
 ```
 
-The default model is `gpt-oss:20b`. The launcher reads the installed models at startup and shows them by their Ollama IDs in `/model`. Sessions use a short system prompt, low effort, a 512-token output cap, and no tools. The launcher runs in your current directory and uses a temporary Claude configuration, which it removes when Claude exits normally. For your hosted models and regular configuration, run `claude`.
+The default model is `gpt-oss:20b`. The launcher reads the installed models at startup and shows them by their Ollama IDs in `/model`. Sessions use a short system prompt, low effort, a 512-token output cap, and no tools. The launcher runs in your current directory and keeps its own Claude profile under `~/Library/Application Support/AgentTools/ClaudeOllama`. Onboarding, workspace trust, and session history persist there across launches. For your hosted models and regular configuration, run `claude`.
 
 ### Refresh
 

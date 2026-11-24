@@ -7,13 +7,13 @@ import ArgumentParser
 import Darwin
 import Foundation
 
-/// Starts an interactive Claude Code session with Ollama's installed models and a disposable config.
+/// Starts an interactive Claude Code session with Ollama's installed models and its own persistent profile.
 struct ClaudeCommand: ParsableCommand {
   /// Opens the terminal UI without changing a user's regular Claude settings.
   static let configuration = CommandConfiguration(
     commandName: "claude",
     abstract: "Launch Claude Code using the local Ollama server.",
-    discussion: "Run from a terminal. Ollama must already be listening on 127.0.0.1:11434. The session is tool-free and its configuration is temporary."
+    discussion: "Run from a terminal. Ollama must already be listening on 127.0.0.1:11434. The session is tool-free and uses a separate local profile."
   )
 
   /// The installed Ollama model to select initially.
@@ -33,13 +33,20 @@ struct ClaudeCommand: ParsableCommand {
       throw ToolError("Claude Code was not found. Install the Claude Code CLI and try again.")
     }
     let arguments = try launchArguments(catalog: fetchCatalog())
-    let fileManager = FileManager.default
-    let home = fileManager.temporaryDirectory.appending(path: "agt-claude-\(UUID().uuidString)")
-    try fileManager.createDirectory(at: home, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-    defer { try? fileManager.removeItem(at: home) }
+    let userHome =
+      locator.environment["HOME"]
+      .flatMap { $0.hasPrefix("/") ? URL(filePath: $0, directoryHint: .isDirectory) : nil } ?? locator.homeDirectory
+    let home = try Self.prepareProfile(in: userHome)
 
     let code = try runInTerminal(executable.path, arguments: arguments, environment: launchEnvironment(locator.environment, home: home))
     if code != 0 { throw ExitCode(rawValue: code) }
+  }
+
+  /// Opens the local profile's private home, preserving the existing Claude state on later launches.
+  static func prepareProfile(in userHome: URL) throws -> URL {
+    let profile = userHome.appending(path: "Library/Application Support/AgentTools/ClaudeOllama", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    return profile
   }
 
   /// Builds the launch flags from Ollama's OpenAI-compatible model catalog.
