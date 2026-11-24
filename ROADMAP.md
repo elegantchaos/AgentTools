@@ -18,6 +18,7 @@ PR #14 merged and is released as 4.0.0. Return point: merge elegantchaos/Agents#
 | Reuse recorded validation passes | Committed validation skips work whose inputs already passed, as described below, with a decision record. | Planned follow-up. |
 | Retire paired worktrees | A paired validation worktree is removed or pruned when its development worktree goes away. | Open question in the [Validation Design](Extras/Documentation/Validation%20Design.md). |
 | Sandbox setup for paired worktrees | `agt worktree create` and `agt prepare` create and prepare the paired worktree, so the first committed validation in a sandbox does not need Git metadata writes. | Candidate, from the PR #14 review. |
+| Build and run commands | An agent in a sandbox can build a product scheme and launch the result through `agt`, without stepping outside its sandbox, as described below. | Candidate, from Bookish S10 on 19 November 2026. |
 
 ## Follow-Up: Reuse Recorded Validation Passes
 
@@ -44,3 +45,11 @@ A submodule package's own tests are then skipped when its commit has a recorded 
 **Deferred.** Reuse for local packages inside the repository, keyed by the tree hash of the package directory and its local dependencies. Workspace members resolve through the workspace's `Package.resolved`, and resources or scheme settings can sit outside the package directory, so a missed input would reuse a result that no longer applies. Consider it only if the first two keys do not save enough time.
 
 **Records.** A new decision ("Validation reuses recorded passes for identical inputs"), a revision of decision 0008 so recorded evidence decides submodule testing, and updates to the Validation Design and the `swift:validation` skill.
+
+## Candidate: Build And Run Commands
+
+An agent that needs to build an app and launch it, to check a change by hand or to hand it to Sam, has no `agt` command for it. A bare `xcodebuild build` inside an agent sandbox fails: Xcode evaluates each package manifest under its own `sandbox-exec`, and macOS refuses `sandbox_apply` inside an already sandboxed process, so package resolution fails for every package. The run also logs a stream of CoreSimulator errors, which are noise even for a macOS-only build. `agt validate` already turns these nested sandboxes off, so the agent ends up running `xcodebuild` outside its sandbox instead.
+
+**Proposal.** `agt build` builds a product scheme for a platform and configuration, with the same nested-sandbox handling and DerivedData layout as validation, and prints the path of the built product. `agt run` builds, then launches the product with any launch arguments: a macOS app with `open`, and an iOS app on a booted simulator. Launch Services is blocked inside agent sandboxes, but `agt` already runs outside them through the sandbox exclusions `agt sandbox configure` sets, so `run` can launch the app too.
+
+**Open questions.** Whether `build` should reuse validation's DerivedData, so a build after validation is incremental; and whether `run` overlaps with `agt vm launch` enough to share code.
