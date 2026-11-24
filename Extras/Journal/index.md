@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-24 Preferences for the Local Claude Profile](2026-11-24-claude-profile-preferences.md) — Restored the saved local model and let Claude use the profile's effort and token settings. Verified with loopback and terminal probes and targeted validation.
+
 - [2026-11-20 Persistent Local Claude Profile](2026-11-20-claude-local-profile.md) — `agt claude` keeps onboarding and workspace trust in its own profile. Verified with two launches in a scratch home.
 
 - [2026-11-20 Drop the ensure-agt.sh Drift Check](2026-11-20-drop-helper-copies.md) — `agt refresh` no longer checks copies of `ensure-agt.sh`, which the Agents repository has deleted; `agt` Is the Agents Repository's Only Dependency (0006) revised to drop the bootstrap exception.
