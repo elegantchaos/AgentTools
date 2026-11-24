@@ -17,11 +17,24 @@ struct ClaudeCommand: ParsableCommand {
   )
 
   /// The installed Ollama model to select initially.
-  @Option(help: "Installed Ollama model to select at startup.")
-  var model = "gpt-oss:20b"
+  @Option(help: "Installed Ollama model to select at startup. Defaults to the saved model or gpt-oss:20b.")
+  var model: String?
 
   /// The base URL shared by the catalog request and Claude Code.
   static let endpoint = "http://127.0.0.1:11434"
+
+  /// Settings owned by the launcher so the private profile uses the local provider.
+  private static let providerEnvironment = [
+    "ANTHROPIC_BASE_URL": endpoint,
+    "ANTHROPIC_API_KEY": "ollama",
+    "CLAUDE_CODE_USE_BEDROCK": "0",
+    "CLAUDE_CODE_USE_FOUNDRY": "0",
+    "CLAUDE_CODE_USE_VERTEX": "0",
+    "NO_PROXY": "127.0.0.1",
+    "no_proxy": "127.0.0.1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+  ]
 
   /// Reads the catalog, then runs Claude Code in the terminal's process group until it exits.
   func run() throws {
@@ -32,11 +45,11 @@ struct ClaudeCommand: ParsableCommand {
     guard let executable = locator.locate(.claude) else {
       throw ToolError("Claude Code was not found. Install the Claude Code CLI and try again.")
     }
-    let arguments = try launchArguments(catalog: fetchCatalog())
     let userHome =
       locator.environment["HOME"]
       .flatMap { $0.hasPrefix("/") ? URL(filePath: $0, directoryHint: .isDirectory) : nil } ?? locator.homeDirectory
     let home = try Self.prepareProfile(in: userHome)
+    let arguments = try launchArguments(catalog: fetchCatalog(), profile: home)
 
     let code = try runInTerminal(executable.path, arguments: arguments, environment: launchEnvironment(locator.environment, home: home))
     if code != 0 { throw ExitCode(rawValue: code) }
@@ -50,40 +63,49 @@ struct ClaudeCommand: ParsableCommand {
   }
 
   /// Builds the launch flags from Ollama's OpenAI-compatible model catalog.
-  func launchArguments(catalog: Data) throws -> [String] {
+  func launchArguments(catalog: Data, profile: URL? = nil) throws -> [String] {
     guard let catalog = try? JSONDecoder().decode(Catalog.self, from: catalog), !catalog.data.isEmpty else {
       throw ToolError("Ollama returned no usable models at \(Self.endpoint)/v1/models.")
     }
     let ids = catalog.data.map(\.id)
-    guard ids.contains(model) else {
-      throw ToolError("Ollama does not have \(model). Choose an installed model with --model: \(ids.joined(separator: ", ")).")
+    let savedModel = profile.flatMap { Self.savedModel(in: $0) }.flatMap { ids.contains($0) ? $0 : nil }
+    let startingModel = model ?? savedModel ?? "gpt-oss:20b"
+    guard ids.contains(startingModel) else {
+      throw ToolError("Ollama does not have \(startingModel). Choose an installed model with --model: \(ids.joined(separator: ", ")).")
     }
     let rows = ids.map { ["model": $0, "label": $0] }
-    let settings = try JSONSerialization.data(withJSONObject: ["modelPicker": ["replaceBuiltInOptions": true, "options": rows]])
+    let settings = try JSONSerialization.data(withJSONObject: [
+      "modelPicker": ["replaceBuiltInOptions": true, "options": rows],
+      "env": Self.providerEnvironment,
+    ])
     return [
-      "--bare", "--tools", "", "--strict-mcp-config", "--system-prompt", "Reply briefly.",
-      "--effort", "low", "--model", model, "--settings", String(decoding: settings, as: UTF8.self),
+      "--bare", "--setting-sources", "user", "--tools", "", "--strict-mcp-config",
+      "--mcp-config", #"{"mcpServers":{}}"#, "--system-prompt", "Reply briefly.",
+      "--model", startingModel, "--settings", String(decoding: settings, as: UTF8.self),
     ]
   }
 
   /// Sets provider and auth for this process only, ignoring inherited Claude overrides and credentials.
   func launchEnvironment(_ inherited: [String: String], home: URL) -> [String: String] {
-    let environment = inherited.filter { !$0.key.hasPrefix("ANTHROPIC_") && !$0.key.hasPrefix("CLAUDE_CODE_") }
-    return environment.merging([
-      "HOME": home.path,
-      "CLAUDE_CONFIG_DIR": home.appending(path: ".claude").path,
-      "ANTHROPIC_BASE_URL": Self.endpoint,
-      "ANTHROPIC_API_KEY": "ollama",
-      "NO_PROXY": "127.0.0.1",
-      "no_proxy": "127.0.0.1",
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-      "DISABLE_AUTOUPDATER": "1",
-      "CLAUDE_CODE_DISABLE_THINKING": "1",
-      "MAX_THINKING_TOKENS": "0",
-      "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "65536",
-      "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "512",
-      "CLAUDE_CODE_MAX_RETRIES": "0",
-    ]) { _, local in local }
+    var environment = inherited.filter { key, _ in
+      !key.hasPrefix("ANTHROPIC_") && !key.hasPrefix("CLAUDE_CODE_") && key != "MAX_THINKING_TOKENS"
+    }
+    environment["HOME"] = home.path
+    environment["CLAUDE_CONFIG_DIR"] = home.appending(path: ".claude").path
+    return environment.merging(Self.providerEnvironment) { _, local in local }
+  }
+
+  /// Reads the saved selection without importing any of Claude's other preferences into the launcher.
+  private static func savedModel(in home: URL) -> String? {
+    let settings = home.appending(path: ".claude/settings.json", directoryHint: .notDirectory)
+    guard let data = try? Data(contentsOf: settings) else { return nil }
+    return (try? JSONDecoder().decode(ProfileSettings.self, from: data))?.model
+  }
+
+  /// The preference needed to match Claude's default against the installed catalog.
+  private struct ProfileSettings: Decodable {
+    /// Claude's saved default model ID.
+    let model: String?
   }
 
   /// Reads the server inventory without starting or loading a model.

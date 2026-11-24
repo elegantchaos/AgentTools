@@ -19,15 +19,56 @@ struct ClaudeCommandTests {
     let arguments = try command.launchArguments(catalog: catalog)
     #expect(arguments.dropLast(2).suffix(2) == ["--model", model])
 
+    #expect(!arguments.contains("--effort"))
+    #expect(arguments.contains("--bare"))
+    #expect(arguments.contains("--strict-mcp-config"))
+    let optionPairs = zip(arguments, arguments.dropFirst()).map { [$0.0, $0.1] }
+    #expect(optionPairs.contains(["--setting-sources", "user"]))
+    #expect(optionPairs.contains(["--tools", ""]))
+    #expect(optionPairs.contains(["--mcp-config", #"{"mcpServers":{}}"#]))
+
     let settings = try #require(arguments.last)
     let json = try JSONSerialization.jsonObject(with: Data(settings.utf8))
-    let picker = try #require((json as? [String: Any])?["modelPicker"] as? [String: Any])
+    let configuration = try #require(json as? [String: Any])
+    let environment = try #require(configuration["env"] as? [String: String])
+    #expect(environment["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:11434")
+    #expect(environment["ANTHROPIC_API_KEY"] == "ollama")
+    #expect(environment["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == nil)
+    #expect(configuration["effortLevel"] == nil)
+    let picker = try #require(configuration["modelPicker"] as? [String: Any])
     #expect(picker["replaceBuiltInOptions"] as? Bool == true)
     #expect(
       picker["options"] as? [[String: String]] == [
         ["model": "gpt-oss:20b", "label": "gpt-oss:20b"],
         ["model": "qwen3-coder-next:q4_K_M", "label": "qwen3-coder-next:q4_K_M"],
       ])
+  }
+
+  /// The local profile restores its model, while an explicit selection applies once.
+  @Test func selectsInstalledProfileModel() throws {
+    let profile = FileManager.default.temporaryDirectory.appending(path: "agt-claude-test-\(UUID().uuidString)")
+    let settingsDirectory = profile.appending(path: ".claude")
+    try FileManager.default.createDirectory(at: settingsDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: profile) }
+
+    let settings = settingsDirectory.appending(path: "settings.json")
+    let data = Data(#"{"model":"qwen3.8:27b-mlx","effortLevel":"high"}"#.utf8)
+    try data.write(to: settings)
+    let command = try ClaudeCommand.parse([])
+    let explicit = try ClaudeCommand.parse(["--model", "gpt-oss:20b"])
+    let catalog = Data(#"{"data":[{"id":"gpt-oss:20b"},{"id":"qwen3.8:27b-mlx"}]}"#.utf8)
+    let defaultOnly = Data(#"{"data":[{"id":"gpt-oss:20b"}]}"#.utf8)
+    let saved = try command.launchArguments(catalog: catalog, profile: profile)
+    let override = try explicit.launchArguments(catalog: catalog, profile: profile)
+    let fallback = try command.launchArguments(catalog: defaultOnly, profile: profile)
+
+    #expect(saved.dropLast(2).suffix(2) == ["--model", "qwen3.8:27b-mlx"])
+    #expect(override.dropLast(2).suffix(2) == ["--model", "gpt-oss:20b"])
+    #expect(fallback.dropLast(2).suffix(2) == ["--model", "gpt-oss:20b"])
+    #expect(try Data(contentsOf: settings) == data)
+    #expect(throws: ToolError.self) {
+      try ClaudeCommand.parse(["--model", "missing:latest"]).launchArguments(catalog: catalog, profile: profile)
+    }
   }
 
   /// An unavailable starting model or invalid response prevents the launcher from opening.
@@ -68,6 +109,7 @@ struct ClaudeCommandTests {
         "ANTHROPIC_CUSTOM_HEADERS": "authorization: hosted",
         "CLAUDE_CODE_OAUTH_TOKEN": "oauth-token",
         "CLAUDE_CODE_USE_BEDROCK": "1",
+        "MAX_THINKING_TOKENS": "1024",
         "HOME": "/regular",
         "PATH": "/usr/bin",
       ], home: URL(filePath: "/ollama-profile"))
@@ -76,9 +118,14 @@ struct ClaudeCommandTests {
     #expect(environment["ANTHROPIC_AUTH_TOKEN"] == nil)
     #expect(environment["ANTHROPIC_CUSTOM_HEADERS"] == nil)
     #expect(environment["CLAUDE_CODE_OAUTH_TOKEN"] == nil)
-    #expect(environment["CLAUDE_CODE_USE_BEDROCK"] == nil)
+    #expect(environment["CLAUDE_CODE_USE_BEDROCK"] == "0")
     #expect(environment["HOME"] == "/ollama-profile")
     #expect(environment["CLAUDE_CONFIG_DIR"] == "/ollama-profile/.claude")
     #expect(environment["PATH"] == "/usr/bin")
+    #expect(environment["CLAUDE_CODE_DISABLE_THINKING"] == nil)
+    #expect(environment["MAX_THINKING_TOKENS"] == nil)
+    #expect(environment["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == nil)
+    #expect(environment["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == nil)
+    #expect(environment["CLAUDE_CODE_MAX_RETRIES"] == nil)
   }
 }
