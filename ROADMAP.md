@@ -18,6 +18,7 @@ PR #14 merged and is released as 4.0.0. Return point: merge elegantchaos/Agents#
 | Reuse recorded validation passes | Committed validation skips work whose inputs already passed, as described below, with a decision record. | Planned follow-up. |
 | Retire paired worktrees | A paired validation worktree is removed or pruned when its development worktree goes away. | Open question in the [Validation Design](Extras/Documentation/Validation%20Design.md). |
 | Sandbox setup for paired worktrees | `agt worktree create` and `agt prepare` create and prepare the paired worktree, so the first committed validation in a sandbox does not need Git metadata writes. | Candidate, from the PR #14 review. |
+| Checks test device | Manual checks and UI tests run on a second test device per platform while validation uses the first, so neither waits for the other, as described below. | Candidate, from Bookish PR 159 on 26 November 2026. Not scheduled. |
 
 ## Follow-Up: Reuse Recorded Validation Passes
 
@@ -44,3 +45,13 @@ A submodule package's own tests are then skipped when its commit has a recorded 
 **Deferred.** Reuse for local packages inside the repository, keyed by the tree hash of the package directory and its local dependencies. Workspace members resolve through the workspace's `Package.resolved`, and resources or scheme settings can sit outside the package directory, so a missed input would reuse a result that no longer applies. Consider it only if the first two keys do not save enough time.
 
 **Records.** A new decision ("Validation reuses recorded passes for identical inputs"), a revision of decision 0008 so recorded evidence decides submodule testing, and updates to the Validation Design and the `swift:validation` skill.
+
+## Candidate: Checks Test Device
+
+`agt validate` creates the test devices it needs when they are missing, one per platform and OS version, named like `Test iPhone 27.2`. They are chosen to suit App Store screenshots, and UI tests and manual checks should run on them too, for consistency. Validation tests an app-hosted scheme on that device directly, without clones, and a simulator holds one installed app and data container per bundle identifier. A manual build or UI test run installed there while validation's iOS tests run can replace the test host, or be replaced by it, so agents wait for validation to finish before checking anything on the device. On 11 November a UI test run swapped builds with a manual check in exactly this way.
+
+**Proposal.** Alongside each test device, `agt validate` also creates a twin from the same device type and runtime, named like `Test iPhone 27.2 (Checks)`. Validation keeps the plain device; UI tests, screenshots and manual checks use the twin. Both persist, so nothing is created or torn down per run, and the twin costs one extra boot.
+
+**Alternatives.** Testing on clones, as parallel testing does, isolates every run but boots a clone each time and needs cleanup after a crash; worth measuring before ruling out. Using any other simulator on the same OS works today but loses device consistency.
+
+**Open questions.** How agents and UI test runs find the twin, perhaps through an `agt` command that reports it; and whether two runs that both want the twin need a lock or an in-use check.

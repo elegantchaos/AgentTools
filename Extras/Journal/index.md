@@ -1,5 +1,7 @@
 # Development Journal
 
+- [2026-11-26 Checks Test Device](2026-11-26-checks-test-device.md) — Recorded a roadmap candidate: a persistent twin of each validation test device for UI tests and manual checks, so they need not wait for validation. Not implemented.
+
 - [2026-11-24 Preferences for the Local Claude Profile](2026-11-24-claude-profile-preferences.md) — Restored the saved local model and let Claude use the profile's effort and token settings. Verified with loopback and terminal probes and targeted validation.
 
 - [2026-11-20 Persistent Local Claude Profile](2026-11-20-claude-local-profile.md) — `agt claude` keeps onboarding and workspace trust in its own profile. Verified with two launches in a scratch home.
